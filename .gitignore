@@ -16,9 +16,8 @@ env/
 ENV/
 
 # Data & Database Persistence
-data/raw/
-data/chroma_db/
-data/sample_hotpotqa.json
+data/
+!data/.gitkeep
 
 # IDE & OS Files
 .vscode/
