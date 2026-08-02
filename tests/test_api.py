@@ -4,7 +4,15 @@ Integration tests for FastAPI Backend endpoints.
 
 import pytest
 from fastapi.testclient import TestClient
+from unittest.mock import patch
+from types import SimpleNamespace
 from api.main import app
+
+@pytest.fixture(autouse=True)
+def mock_env_settings():
+    mock_settings = SimpleNamespace(neo4j_uri="", gemini_api_key="")
+    with patch("api.main.get_settings", return_value=mock_settings):
+        yield
 
 client = TestClient(app)
 
