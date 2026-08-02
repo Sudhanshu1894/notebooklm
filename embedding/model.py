@@ -28,7 +28,11 @@ class EmbeddingModel:
         self.model_name = model_name or getattr(settings, "embedding_model", "all-MiniLM-L6-v2")
         print(f"[embedding] Loading SentenceTransformer model '{self.model_name}'...")
         self.model = SentenceTransformer(self.model_name)
-        self.dimension = self.model.get_sentence_embedding_dimension()
+        # Use get_embedding_dimension (new API); fall back for older versions
+        if hasattr(self.model, "get_embedding_dimension"):
+            self.dimension = self.model.get_embedding_dimension()
+        else:
+            self.dimension = self.model.get_sentence_embedding_dimension()
         self._initialized = True
         print(f"[embedding] Model loaded successfully (dimension: {self.dimension}).")
 
