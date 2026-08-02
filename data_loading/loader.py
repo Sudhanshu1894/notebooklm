@@ -32,7 +32,11 @@ def load_hotpotqa_dataset() -> DatasetDict:
         DatasetDict containing original benchmark splits ('train', 'validation').
     """
     print("[loader] Downloading/Loading HotpotQA distractor dataset from Hugging Face...")
-    dataset = load_dataset("hotpot_qa", "distractor")
+    try:
+        dataset = load_dataset("hotpotqa/hotpot_qa", "distractor")
+    except Exception as e:
+        print(f"[loader] Fallback attempt loading 'hotpot_qa': {e}")
+        dataset = load_dataset("hotpot_qa", "distractor")
     print(f"[loader] Successfully loaded splits: {list(dataset.keys())}")
     return dataset
 

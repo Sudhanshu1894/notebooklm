@@ -19,6 +19,10 @@ sentence-transformers>=2.6.0
 neo4j>=5.18.0
 langchain-neo4j>=0.1.0
 
+# Document Parsing & Text Extraction
+pymupdf>=1.24.0
+python-docx>=1.1.0
+
 # Dataset Loading & Utilities
 datasets>=2.18.0
 python-dotenv>=1.0.1
