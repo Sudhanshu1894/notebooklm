@@ -92,4 +92,5 @@ class Settings(BaseSettings):
 
 # Global settings instance
 def get_settings() -> Settings:
+    load_dotenv(override=True)
     return Settings()
