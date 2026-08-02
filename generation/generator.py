@@ -83,11 +83,14 @@ class AnswerGenerator:
 
         prompt, sources = build_generation_prompt(query, context_chunks)
 
-        response = self.client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
-        answer_text = response.text.strip() if response and response.text else ""
+        try:
+            response = self.client.models.generate_content(
+                model="gemini-flash-latest",
+                contents=prompt,
+            )
+            answer_text = response.text.strip() if response and response.text else ""
+        except Exception as e:
+            answer_text = f"[Gemini API Error]: {str(e)}"
 
         is_insufficient = answer_text.startswith("INSUFFICIENT_CONTEXT")
 

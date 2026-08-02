@@ -29,7 +29,7 @@ def check_gemini(settings) -> bool:
         from google import genai
         client = genai.Client(api_key=settings.gemini_api_key)
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-flash-latest",
             contents="Say 'OK' if you can read this."
         )
         if response and response.text:

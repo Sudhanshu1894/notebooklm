@@ -114,12 +114,16 @@ class GraphExtractor:
         return parsed
 
     def _call_gemini(self, prompt: str, is_retry: bool = False) -> str:
-        """Helper calling Gemini 2.5 Flash API."""
-        response = self.client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=f"{EXTRACTION_SYSTEM_PROMPT}\n\n{prompt}",
-        )
-        return response.text if response and response.text else ""
+        """Helper calling Gemini Flash API."""
+        try:
+            response = self.client.models.generate_content(
+                model="gemini-flash-latest",
+                contents=f"{EXTRACTION_SYSTEM_PROMPT}\n\n{prompt}",
+            )
+            return response.text if response and response.text else ""
+        except Exception as e:
+            print(f"[extractor] Gemini API error: {e}")
+            return ""
 
     def _parse_json(self, text: str) -> Optional[Dict[str, Any]]:
         """Parses JSON from response text, stripping markdown code fences if present."""

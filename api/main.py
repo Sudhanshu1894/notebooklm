@@ -180,37 +180,51 @@ def chat(notebook_id: str, body: ChatRequest):
     if not nb:
         doc_registry.create_notebook(notebook_id, f"Notebook {notebook_id}")
 
-    settings = get_settings()
-    router = QueryRouter(log_routing=True)
-    route, reason, _ = router.route(body.query, notebook_id=notebook_id)
+    try:
+        settings = get_settings()
+        router = QueryRouter(log_routing=True)
+        route, reason, _ = router.route(body.query, notebook_id=notebook_id)
 
-    vector_retriever = VectorRetriever()
-    vector_chunks = vector_retriever.retrieve(body.query, notebook_id=notebook_id, top_k=body.top_k)
+        vector_retriever = VectorRetriever()
+        vector_chunks = vector_retriever.retrieve(body.query, notebook_id=notebook_id, top_k=body.top_k)
 
-    if route == "hybrid" and settings.neo4j_uri:
-        graph_retriever = GraphRetriever()
-        graph_chunks = graph_retriever.expand_via_graph(notebook_id, vector_chunks)
-        reranker = HybridReranker()
-        context_chunks = reranker.merge_and_rerank(vector_chunks, graph_chunks)
-    else:
-        context_chunks = vector_chunks
+        if route == "hybrid" and settings.neo4j_uri:
+            try:
+                graph_retriever = GraphRetriever()
+                graph_chunks = graph_retriever.expand_via_graph(notebook_id, vector_chunks)
+                reranker = HybridReranker()
+                context_chunks = reranker.merge_and_rerank(vector_chunks, graph_chunks)
+            except Exception as ge:
+                print(f"[chat] Graph expansion failed, falling back to vector: {ge}")
+                context_chunks = vector_chunks
+        else:
+            context_chunks = vector_chunks
 
-    # Generation
-    if not settings.gemini_api_key:
-        # Demo mode — no Gemini key
-        answer = f"[DEMO MODE — No GEMINI_API_KEY set]\n\nTop retrieved chunk:\n\"{context_chunks[0]['text'][:300]}...\"" if context_chunks else "No context found."
-        return ChatResponse(query=body.query, answer=answer, citations=[], route=route, is_insufficient=True)
+        # Generation
+        if not settings.gemini_api_key:
+            # Demo mode — no Gemini key
+            answer = f"[DEMO MODE — No GEMINI_API_KEY set]\n\nTop retrieved chunk:\n\"{context_chunks[0]['text'][:300]}...\"" if context_chunks else "No context found."
+            return ChatResponse(query=body.query, answer=answer, citations=[], route=route, is_insufficient=True)
 
-    from generation.generator import AnswerGenerator
-    generator = AnswerGenerator()
-    result = generator.generate(body.query, context_chunks)
-    return ChatResponse(
-        query=body.query,
-        answer=result["answer_text"],
-        citations=result["citations"],
-        route=route,
-        is_insufficient=result["is_insufficient"],
-    )
+        from generation.generator import AnswerGenerator
+        generator = AnswerGenerator()
+        result = generator.generate(body.query, context_chunks)
+        return ChatResponse(
+            query=body.query,
+            answer=result["answer_text"],
+            citations=result["citations"],
+            route=route,
+            is_insufficient=result["is_insufficient"],
+        )
+    except Exception as e:
+        print(f"[chat error]: {e}")
+        return ChatResponse(
+            query=body.query,
+            answer=f"Error processing query: {str(e)}",
+            citations=[],
+            route="error",
+            is_insufficient=True,
+        )
 
 
 @app.get("/notebooks/{notebook_id}/graph")
