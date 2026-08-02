@@ -17,7 +17,8 @@ MULTI_HOP_PATTERNS = [
     r"\b(both|same|common|shared)\b",
     r"\b(connect|link|relate|relationship|between)\b",
     r"\b(compared? to|vs\.?|versus|differ)\b",
-    r"\b(who|what|which).{0,40}(and|also|both)\b",
+    r"\b(who|what|which).{0,40}(and|also|both|or)\b",
+    r"\b(first|earlier|before|after|older|newer|prior|later)\b",
     r"\b(cause[sd]?|result[s]? in|lead[s]? to|because of)\b",
 ]
 
