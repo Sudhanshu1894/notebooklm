@@ -1,0 +1,18 @@
+# Exclude Python virtual environment, dependencies, and backend files from Vercel
+venv/
+.venv/
+data/
+requirements.txt
+*.py
+ingestion/
+embedding/
+vector_store/
+graph_store/
+retrieval/
+generation/
+api/
+scripts/
+tests/
+evaluation/
+config/
+data_loading/

@@ -67,7 +67,7 @@ export default function Home() {
 
       {/* Create notebook form */}
       <div className="glass" style={{ padding: "2rem", width: "100%", maxWidth: 480, marginBottom: "2rem" }}>
-        <h2 style={{ fontSize: "1rem", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "1rem", letterSpacing: "0.5px", textTransform: "uppercase", fontSize: "11px" }}>New Notebook</h2>
+        <h2 style={{ fontWeight: 600, color: "var(--text-secondary)", marginBottom: "1rem", letterSpacing: "0.5px", textTransform: "uppercase", fontSize: "11px" }}>New Notebook</h2>
         <form onSubmit={handleCreate} style={{ display: "flex", gap: "10px" }}>
           <input
             type="text"
