@@ -1,0 +1,27 @@
+# GraphRAG Research Notebook - Free-Tier Dependencies (DA1 Phase)
+
+# Web API Framework
+fastapi>=0.110.0
+uvicorn>=0.28.0
+pydantic>=2.6.0
+
+# Orchestration & AI (Free Tier Gemini Flash)
+langchain>=0.2.0
+langchain-community>=0.2.0
+langchain-google-genai>=1.0.0
+google-genai>=0.1.1
+
+# Vector Store & Embeddings (Local & Open-Source)
+chromadb>=0.4.24
+sentence-transformers>=2.6.0
+
+# Knowledge Graph (Neo4j AuraDB Free)
+neo4j>=5.18.0
+langchain-neo4j>=0.1.0
+
+# Dataset Loading & Utilities
+datasets>=2.18.0
+python-dotenv>=1.0.1
+
+# Testing
+pytest>=8.0.0
