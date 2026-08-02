@@ -43,8 +43,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory notebook registry (use Supabase in production)
-_notebooks: Dict[str, Dict] = {}
 doc_registry = DocumentRegistry()
 
 
@@ -92,6 +90,15 @@ def _process_document_background(file_path: str, doc_id: str, notebook_id: str):
         parsed = global_parser_registry.parse_file(file_path, doc_id=doc_id)
         doc_registry.update_status(doc_id, "chunking")
         chunks = chunk_parsed_document(parsed)
+        if not chunks:
+            doc_registry.update_status(
+                doc_id,
+                "failed",
+                chunk_count=0,
+                error_message="No readable text found in document. If this is a PDF, it may be scanned/image-only without OCR text.",
+            )
+            return
+
         doc_registry.update_status(doc_id, "embedding")
         embedder = EmbeddingModel()
         embeddings = embedder.embed_texts([c.text for c in chunks])
@@ -111,15 +118,16 @@ def health_check():
 
 @app.post("/notebooks", response_model=NotebookResponse)
 def create_notebook(body: NotebookCreate):
-    """Creates a new notebook and returns its ID."""
+    """Creates a new notebook in SQLite database and returns its ID."""
     notebook_id = str(uuid.uuid4())[:8]
-    _notebooks[notebook_id] = {"name": body.name, "description": body.description}
-    return NotebookResponse(notebook_id=notebook_id, name=body.name, description=body.description or "")
+    nb = doc_registry.create_notebook(notebook_id, body.name, body.description or "")
+    return NotebookResponse(notebook_id=nb["notebook_id"], name=nb["name"], description=nb["description"])
 
 
 @app.get("/notebooks")
 def list_notebooks():
-    return [{"notebook_id": nid, **meta} for nid, meta in _notebooks.items()]
+    """Lists all persistent notebooks."""
+    return doc_registry.list_notebooks()
 
 
 @app.post("/notebooks/{notebook_id}/documents")
@@ -129,8 +137,9 @@ async def upload_document(
     file: UploadFile = File(...),
 ):
     """Uploads a document and starts async ingestion pipeline."""
-    if notebook_id not in _notebooks:
-        raise HTTPException(status_code=404, detail=f"Notebook '{notebook_id}' not found.")
+    nb = doc_registry.get_notebook(notebook_id)
+    if not nb:
+        doc_registry.create_notebook(notebook_id, f"Notebook {notebook_id}")
 
     doc_id = str(uuid.uuid4())[:8]
     save_path = os.path.join(UPLOAD_DIR, f"{doc_id}_{file.filename}")
@@ -143,6 +152,7 @@ async def upload_document(
         filename=file.filename,
         file_path=save_path,
         file_type=os.path.splitext(file.filename)[1].lstrip("."),
+        notebook_id=notebook_id,
     )
     background_tasks.add_task(_process_document_background, save_path, doc_id, notebook_id)
     return {"doc_id": doc_id, "filename": file.filename, "status": "processing"}
@@ -159,15 +169,16 @@ def get_document_status(notebook_id: str, doc_id: str):
 
 @app.get("/notebooks/{notebook_id}/sources")
 def list_sources(notebook_id: str):
-    """Lists all documents in the registry (scoped to notebook by convention)."""
-    return doc_registry.list_documents()
+    """Lists documents uploaded to this specific notebook."""
+    return doc_registry.list_documents(notebook_id=notebook_id)
 
 
 @app.post("/notebooks/{notebook_id}/chat", response_model=ChatResponse)
 def chat(notebook_id: str, body: ChatRequest):
     """Runs hybrid retrieval + Gemini generation and returns cited answer."""
-    if notebook_id not in _notebooks:
-        raise HTTPException(status_code=404, detail=f"Notebook '{notebook_id}' not found.")
+    nb = doc_registry.get_notebook(notebook_id)
+    if not nb:
+        doc_registry.create_notebook(notebook_id, f"Notebook {notebook_id}")
 
     settings = get_settings()
     router = QueryRouter(log_routing=True)
