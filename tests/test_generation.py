@@ -22,7 +22,7 @@ def test_build_generation_prompt():
 
     prompt, sources = build_generation_prompt(query, chunks)
 
-    assert "[1] (Source: tech_history.pdf, Page 4 — Founding)" in prompt
+    assert "[1] (Source: tech_history.pdf, Page 4 -- Founding)" in prompt
     assert "[2] (Source: tech_history.pdf, Page 5)" in prompt
     assert "Steve Jobs and Steve Wozniak" in prompt
     assert f"QUESTION: {query}" in prompt

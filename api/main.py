@@ -24,6 +24,8 @@ from retrieval.router import QueryRouter
 from retrieval.vector_retriever import VectorRetriever
 from retrieval.graph_retriever import GraphRetriever
 from retrieval.hybrid_reranker import HybridReranker
+from retrieval.web_search import WebSearcher
+from data_loading.youtube import YouTubeExtractor
 from config.settings import get_settings
 
 UPLOAD_DIR = "./data/uploads"
@@ -60,6 +62,7 @@ class NotebookResponse(BaseModel):
 class ChatRequest(BaseModel):
     query: str
     top_k: Optional[int] = 5
+    mode: Optional[str] = "auto"  # "auto" | "chat" | "teach"
 
 class CitationItem(BaseModel):
     citation_number: int
@@ -72,9 +75,27 @@ class CitationItem(BaseModel):
 class ChatResponse(BaseModel):
     query: str
     answer: str
-    citations: List[dict]
+    citations: List[Dict[str, Any]]
     route: str
-    is_insufficient: bool
+    is_insufficient: bool = False
+    new_title: Optional[str] = None
+    mode_used: Optional[str] = None
+
+class QuizRequest(BaseModel):
+    topic: Optional[str] = ""
+    top_k: Optional[int] = 20
+
+class QuizQuestion(BaseModel):
+    question: str
+    options: List[str]
+    correct_index: int
+    explanation: str
+    source_hint: Optional[str] = ""
+    difficulty: Optional[str] = "medium"
+
+class QuizResponse(BaseModel):
+    questions: List[QuizQuestion]
+    error: Optional[str] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -126,8 +147,14 @@ def create_notebook(body: NotebookCreate):
 
 @app.get("/notebooks")
 def list_notebooks():
-    """Lists all persistent notebooks."""
+    """Lists all notebooks."""
     return doc_registry.list_notebooks()
+
+@app.delete("/notebooks/{notebook_id}")
+def delete_notebook(notebook_id: str):
+    """Deletes a notebook."""
+    doc_registry.delete_notebook(notebook_id)
+    return {"status": "success"}
 
 
 @app.post("/notebooks/{notebook_id}/documents")
@@ -173,6 +200,12 @@ def list_sources(notebook_id: str):
     return doc_registry.list_documents(notebook_id=notebook_id)
 
 
+@app.get("/notebooks/{notebook_id}/messages")
+def get_messages(notebook_id: str):
+    """Returns chat history for a notebook."""
+    return doc_registry.list_messages(notebook_id)
+
+
 @app.post("/notebooks/{notebook_id}/chat", response_model=ChatResponse)
 def chat(notebook_id: str, body: ChatRequest):
     """Runs hybrid retrieval + Gemini generation and returns cited answer."""
@@ -182,6 +215,23 @@ def chat(notebook_id: str, body: ChatRequest):
 
     try:
         settings = get_settings()
+        
+        # Save user message
+        user_msg_id = str(uuid.uuid4())
+        doc_registry.save_message(
+            message_id=user_msg_id,
+            notebook_id=notebook_id,
+            role="user",
+            content=body.query,
+        )
+
+        # 1. YouTube Link Extraction
+        yt_extractor = YouTubeExtractor()
+        yt_urls = yt_extractor.extract_urls(body.query)
+        yt_chunks = []
+        for vid in yt_urls:
+            yt_chunks.extend(yt_extractor.get_transcript_chunks(vid))
+
         router = QueryRouter(log_routing=True)
         route, reason, _ = router.route(body.query, notebook_id=notebook_id)
 
@@ -200,21 +250,72 @@ def chat(notebook_id: str, body: ChatRequest):
         else:
             context_chunks = vector_chunks
 
-        # Generation
-        if not settings.gemini_api_key:
-            # Demo mode — no Gemini key
-            answer = f"[DEMO MODE — No GEMINI_API_KEY set]\n\nTop retrieved chunk:\n\"{context_chunks[0]['text'][:300]}...\"" if context_chunks else "No context found."
-            return ChatResponse(query=body.query, answer=answer, citations=[], route=route, is_insufficient=True)
+        # Add YT chunks to context
+        if yt_chunks:
+            context_chunks = yt_chunks + context_chunks
+            route = "youtube_explain"
+            # If query is mostly just the URL, tell Gemini to summarize it
+            if len(body.query.split()) <= 2:
+                body.query = f"Please summarize the main points of this video transcript."
 
-        from generation.generator import AnswerGenerator
-        generator = AnswerGenerator()
-        result = generator.generate(body.query, context_chunks)
+        # Generation — cascades through Gemini -> Groq -> LocalMiniModel automatically
+        # Pass the mode from the request body ("auto" | "chat" | "teach")
+        from generation.generator import generate_with_fallback
+        result = generate_with_fallback(body.query, context_chunks, mode=body.mode or "auto")
+        generator_name = result.pop("_generator", "gemini")
+        result.pop("_fallback_reason", None)
+        
+        # 2. Web Search Fallback (only for Gemini / Groq answers, not local)
+        if result["is_insufficient"] and generator_name != "local_mini_model":
+            print("[chat] Local context insufficient. Falling back to web search...")
+            web_searcher = WebSearcher()
+            web_chunks = web_searcher.search(body.query)
+            if web_chunks:
+                context_chunks = web_chunks + context_chunks
+                result = generate_with_fallback(body.query, context_chunks)
+                generator_name = result.pop("_generator", generator_name)
+                result.pop("_fallback_reason", None)
+                if not result["is_insufficient"]:
+                    route = "web_fallback"
+
+        # Save assistant message
+        assistant_msg_id = str(uuid.uuid4())
+        doc_registry.save_message(
+            message_id=assistant_msg_id,
+            notebook_id=notebook_id,
+            role="assistant",
+            content=result["answer_text"],
+            citations=result["citations"],
+            route=route,
+            is_insufficient=result["is_insufficient"],
+        )
+
+        # 3. Auto-rename notebook if it has default name (only when Gemini is active)
+        nb = doc_registry.get_notebook(notebook_id)
+        new_title = None
+        if nb and nb.get("name", "").startswith("Research Chat") and generator_name == "gemini":
+            try:
+                from generation.generator import AnswerGenerator
+                _gen = AnswerGenerator()
+                title_prompt = f"Given the user's query, generate a very short, concise title (max 5 words) for this chat. Do not use quotes or punctuation. Query: {body.query}"
+                title_res = _gen.llm.generate_content(title_prompt)
+                new_title = title_res.text.strip().replace('"', '')
+                if new_title:
+                    doc_registry.update_notebook_name(notebook_id, new_title)
+            except Exception as e:
+                print(f"[chat] Failed to auto-rename notebook: {e}")
+
+        # Append generator name to route so frontend can indicate which model answered
+        effective_route = f"{route}:{generator_name}" if generator_name != "gemini" else route
+
         return ChatResponse(
             query=body.query,
             answer=result["answer_text"],
             citations=result["citations"],
-            route=route,
+            route=effective_route,
             is_insufficient=result["is_insufficient"],
+            new_title=new_title,
+            mode_used=result.get("mode_used"),
         )
     except Exception as e:
         print(f"[chat error]: {e}")
@@ -225,6 +326,64 @@ def chat(notebook_id: str, body: ChatRequest):
             route="error",
             is_insufficient=True,
         )
+
+
+@app.post("/notebooks/{notebook_id}/quiz", response_model=QuizResponse)
+def generate_quiz(notebook_id: str, body: QuizRequest):
+    """Generate a 5-question MCQ quiz from the notebook's documents."""
+    try:
+        vector_retriever = VectorRetriever()
+        context_chunks = vector_retriever.retrieve(
+            body.topic or "key concepts definitions important",
+            notebook_id=notebook_id,
+            top_k=body.top_k or 20,
+        )
+        if not context_chunks:
+            return QuizResponse(questions=[], error="No documents found in this notebook. Please upload a document first.")
+
+        settings = get_settings()
+        if settings.gemini_api_key:
+            try:
+                from generation.generator import AnswerGenerator
+                gen = AnswerGenerator(api_key=settings.gemini_api_key)
+                raw = gen.generate_quiz(context_chunks, topic=body.topic or "")
+                if "error" not in raw:
+                    questions = [
+                        QuizQuestion(
+                            question=q["question"],
+                            options=q["options"],
+                            correct_index=q["correct_index"],
+                            explanation=q["explanation"],
+                            source_hint=q.get("source_hint", ""),
+                            difficulty=q.get("difficulty", "medium"),
+                        )
+                        for q in raw.get("questions", [])
+                    ]
+                    return QuizResponse(questions=questions)
+            except Exception as e:
+                print(f"[quiz] Gemini failed ({e}), falling back to LocalMiniModel...")
+
+        # LocalMiniModel fallback
+        from generation.local_mini_model import LocalMiniModel
+        local = LocalMiniModel()
+        raw = local.generate_quiz(context_chunks, topic=body.topic or "")
+        if "error" in raw:
+            return QuizResponse(questions=[], error=raw["error"])
+        questions = [
+            QuizQuestion(
+                question=q["question"],
+                options=q["options"],
+                correct_index=q["correct_index"],
+                explanation=q["explanation"],
+                source_hint=q.get("source_hint", ""),
+                difficulty=q.get("difficulty", "medium"),
+            )
+            for q in raw.get("questions", [])
+        ]
+        return QuizResponse(questions=questions)
+    except Exception as e:
+        print(f"[quiz error]: {e}")
+        return QuizResponse(questions=[], error=f"Quiz generation failed: {str(e)}")
 
 
 @app.get("/notebooks/{notebook_id}/graph")

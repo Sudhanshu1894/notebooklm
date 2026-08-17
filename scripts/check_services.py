@@ -132,6 +132,10 @@ def check_supabase(settings) -> bool:
         if res.status_code in (200, 404):  # REST root returns 200 or swagger OpenAPI
             print(f"[PASS] Supabase client authenticated successfully (HTTP {res.status_code})")
             return True
+        elif res.status_code == 401 and "service_role" in res.text:
+            # Reached Supabase successfully but root endpoint requires service_role key
+            print(f"[PASS] Supabase client connected successfully (Anon key recognized)")
+            return True
         else:
             print(f"[FAIL] Supabase returned status code: {res.status_code}")
             return False

@@ -5,6 +5,7 @@ export interface Notebook {
   notebook_id: string;
   name: string;
   description: string;
+  created_at?: string;
 }
 
 export interface Document {
@@ -32,6 +33,8 @@ export interface ChatResponse {
   citations: Citation[];
   route: string;
   is_insufficient: boolean;
+  new_title?: string;
+  mode_used?: string;
 }
 
 export interface GraphData {
@@ -40,15 +43,35 @@ export interface GraphData {
   demo_mode?: boolean;
 }
 
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correct_index: number;
+  explanation: string;
+  source_hint?: string;
+  difficulty?: "easy" | "medium" | "hard";
+}
+
+export interface QuizResponse {
+  questions: QuizQuestion[];
+  error?: string;
+}
+
 export const api = {
-  async createNotebook(name: string, description = ""): Promise<Notebook> {
-    const res = await fetch(`${API_BASE}/notebooks`, {
+
+  async createNotebook(name: string = "New Research"): Promise<{ notebook_id: string }> {
+    const res = await fetch(`${API_BASE}/notebooks`, { 
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description }),
+      body: JSON.stringify({ name, description: "" })
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
+  },
+
+  async deleteNotebook(notebookId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(await res.text());
   },
 
   async listNotebooks(): Promise<Notebook[]> {
@@ -80,12 +103,28 @@ export const api = {
     return res.json();
   },
 
-  async chat(notebookId: string, query: string, topK = 5): Promise<ChatResponse> {
+  async chat(notebookId: string, query: string, topK = 5, mode: "auto" | "chat" | "teach" = "auto"): Promise<ChatResponse> {
     const res = await fetch(`${API_BASE}/notebooks/${notebookId}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, top_k: topK }),
+      body: JSON.stringify({ query, top_k: topK, mode }),
     });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  async generateQuiz(notebookId: string, topic = "", topK = 20): Promise<QuizResponse> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/quiz`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic, top_k: topK }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  async listMessages(notebookId: string): Promise<Record<string, unknown>[]> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/messages`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },

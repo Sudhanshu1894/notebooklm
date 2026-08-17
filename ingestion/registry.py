@@ -6,6 +6,7 @@ Tracks notebooks, source documents, processing statuses, and metadata via SQLite
 import sqlite3
 import os
 from typing import Dict, Any, List, Optional
+import json
 from datetime import datetime
 
 
@@ -59,6 +60,22 @@ class DocumentRegistry:
             if "notebook_id" not in columns:
                 conn.execute("ALTER TABLE documents ADD COLUMN notebook_id TEXT NOT NULL DEFAULT 'default'")
 
+            # Messages table
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS messages (
+                    message_id TEXT PRIMARY KEY,
+                    notebook_id TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    citations TEXT DEFAULT '[]',
+                    route TEXT,
+                    is_insufficient INTEGER DEFAULT 0,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+
             conn.commit()
 
     # ── Notebook Methods ──────────────────────────────────────────────────────
@@ -78,6 +95,18 @@ class DocumentRegistry:
             cursor = conn.execute("SELECT * FROM notebooks WHERE notebook_id = ?", (notebook_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
+
+    def update_notebook_name(self, notebook_id: str, new_name: str):
+        with self._get_connection() as conn:
+            conn.execute("UPDATE notebooks SET name = ? WHERE notebook_id = ?", (new_name, notebook_id))
+            conn.commit()
+
+    def delete_notebook(self, notebook_id: str):
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM notebooks WHERE notebook_id = ?", (notebook_id,))
+            conn.execute("DELETE FROM messages WHERE notebook_id = ?", (notebook_id,))
+            conn.execute("DELETE FROM documents WHERE notebook_id = ?", (notebook_id,))
+            conn.commit()
 
     def list_notebooks(self) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
@@ -151,3 +180,41 @@ class DocumentRegistry:
             else:
                 cursor = conn.execute("SELECT * FROM documents ORDER BY created_at DESC")
             return [dict(r) for r in cursor.fetchall()]
+
+    # ── Message Methods ───────────────────────────────────────────────────────
+
+    def save_message(
+        self,
+        message_id: str,
+        notebook_id: str,
+        role: str,
+        content: str,
+        citations: List[Dict[str, Any]] = None,
+        route: Optional[str] = None,
+        is_insufficient: bool = False,
+    ):
+        now = datetime.now().isoformat()
+        citations_json = json.dumps(citations) if citations else "[]"
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO messages (message_id, notebook_id, role, content, citations, route, is_insufficient, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (message_id, notebook_id, role, content, citations_json, route, int(is_insufficient), now),
+            )
+            conn.commit()
+
+    def list_messages(self, notebook_id: str) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM messages WHERE notebook_id = ? ORDER BY created_at ASC", (notebook_id,)
+            )
+            rows = cursor.fetchall()
+            messages = []
+            for row in rows:
+                msg = dict(row)
+                msg["citations"] = json.loads(msg["citations"]) if msg["citations"] else []
+                msg["is_insufficient"] = bool(msg["is_insufficient"])
+                messages.append(msg)
+            return messages

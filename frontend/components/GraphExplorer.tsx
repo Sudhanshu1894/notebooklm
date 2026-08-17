@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { api, GraphData } from "@/lib/api";
 
 export default function GraphExplorer({ notebookId }: { notebookId: string }) {
