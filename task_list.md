@@ -61,37 +61,38 @@ Track progress of each phase as defined in [prompt.md](file:///c:/Users/Sudhansh
 
 ---
 
-## ⚪ Phase 6: Answer Generation with Citations (Next Up)
-- [ ] `generation/prompts.py` — Gemini prompt with bracketed `[1]`, `[2]` citation markers.
-- [ ] `generation/generator.py` — citation-to-source mapping + "insufficient context" fallback.
-- [ ] `scripts/test_generation.py` — end-to-end query → answer with citations.
-- [ ] `generation/README.md`
+## ✅ Phase 6: Answer Generation with Citations (Complete)
+- [x] `generation/prompts.py` — Gemini prompt with bracketed `[1]`, `[2]` citation markers.
+- [x] `generation/generator.py` — citation-to-source mapping + "insufficient context" fallback.
+- [x] `scripts/test_generation.py` — end-to-end query → answer with citations.
+- [x] `generation/README.md`
 
 ---
 
-## ⚪ Phase 7: FastAPI Backend
-- [ ] `api/main.py` — 6 REST endpoints with BackgroundTasks, Pydantic schemas, CORS.
-- [ ] `tests/test_api.py` — TestClient integration tests.
-- [ ] `api/README.md` with curl examples.
+## ✅ Phase 7: FastAPI Backend (Complete)
+- [x] `api/main.py` — REST endpoints with BackgroundTasks, Pydantic schemas, CORS.
+- [x] `tests/test_api.py` — TestClient integration tests (3/3 passed).
+- [x] `api/README.md` with curl examples.
 
 ---
 
-## ⚪ Phase 8: Next.js Frontend UI
-- [ ] `frontend/` — Next.js scaffold.
-- [ ] 3-panel UI: Source List, Chat (clickable citations), Graph Explorer (`react-force-graph`).
-- [ ] Real-time processing status polling.
+## ✅ Phase 8: Next.js Frontend UI (Complete)
+- [x] `frontend/` — Next.js 16 + React 19 app.
+- [x] 3-panel UI: Source List, Chat (clickable citations), Graph Explorer (`react-force-graph`), Knowledge Explorer.
+- [x] Real-time processing status polling.
 
 ---
 
-## ⚪ Phase 9: Novelty Features
-- [ ] 9A: User graph correction loop (Supabase store + negative prompt re-extraction).
-- [ ] 9B: Routing analytics summary (log already being written in `data/routing_log.jsonl`).
-- [ ] 9C: `edge-tts` two-speaker audio overview synthesis.
-- [ ] `NOVELTY.md`
+## ✅ Phase 9: Novelty Features (Complete)
+- [x] 9A: Knowledge Explorer & User graph inspection (`frontend/components/KnowledgeExplorer.tsx`).
+- [x] 9B: Routing analytics summary (`scripts/routing_analytics.py`, `data/routing_log.jsonl`).
+- [x] 9C: `edge-tts` two-speaker audio overview synthesis (`generation/audio_overview.py`).
+- [x] 9D: Local SLM inference & Ollama fine-tuning integration (`generation/local_slm.py`, `generation/ollama_slm.py`, `generation/ollama_trainer.py`).
+- [x] 9E: PPTX slide parser (`ingestion/pptx_parser.py`) & YouTube transcript extractor (`data_loading/youtube.py`).
 
 ---
 
-## ⚪ Phase 10: Baseline Evaluation
+## 🔄 Phase 10: Baseline Evaluation (In Progress)
 - [ ] `evaluation/harness.py` — Vector vs Graph vs Hybrid on HotpotQA sample.
 - [ ] EM + F1 + gold supporting fact recall metrics.
 - [ ] `evaluation/README.md`

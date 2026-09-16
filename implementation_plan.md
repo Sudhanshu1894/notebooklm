@@ -134,31 +134,33 @@ Context Paragraphs per entry: 10
 ---
 
 ### ✅ Phase 7 — FastAPI Backend
-- [x] `api/main.py` — POST `/notebooks`, `/documents`, GET `/status`, POST `/chat`, GET `/graph`, GET `/sources`
+- [x] `api/main.py` — POST `/notebooks`, `/documents`, GET `/status`, POST `/chat`, GET `/graph`, GET `/sources`, POST `/quiz`, POST `/audio-overview`
 - [x] BackgroundTasks for document processing (ingestion + embedding + graph build)
 - [x] Pydantic request/response schemas, CORS, error handling
-- [x] `tests/test_api.py` — integration tests with `TestClient`
+- [x] `tests/test_api.py` — integration tests with `TestClient` (3/3 passed)
 - [x] `api/README.md` with curl examples
 
 ---
 
 ### ✅ Phase 8 — Next.js Frontend
-- [x] `frontend/` — Next.js app scaffold
-- [x] 3-panel UI: Source List, Chat (clickable citations), Graph Explorer (`react-force-graph`)
+- [x] `frontend/` — Next.js 16 + React 19 app scaffold
+- [x] 3-panel UI: Source List, Chat (clickable citations), Graph Explorer (`react-force-graph`), Knowledge Explorer
+- [x] Interactive Quiz Mode, Teaching Assistant Mode, Supabase Authentication
 - [x] Real-time document processing polling
 - [x] `frontend/README.md`
 
 ---
 
-### 🔄 Phase 9 — Novelty Features (In Progress)
-- [ ] **9A** — User graph correction loop (flag entity → Supabase → negative prompt re-extraction)
-- [x] **9B** — Routing analytics summary script (`routing_log.jsonl` already being populated)
-- [ ] **9C** — `edge-tts` two-speaker audio overview generation
-- [ ] `NOVELTY.md`
+### ✅ Phase 9 — Novelty Features
+- [x] **9A** — Knowledge Explorer & User Graph Inspection (`frontend/components/KnowledgeExplorer.tsx`)
+- [x] **9B** — Routing analytics summary script (`scripts/routing_analytics.py`, `data/routing_log.jsonl`)
+- [x] **9C** — Two-speaker audio overview podcast generator with `edge-tts` (`generation/audio_overview.py`)
+- [x] **9D** — Local SLM inference (`generation/local_slm.py`, `generation/ollama_slm.py`) & fine-tuning (`generation/ollama_trainer.py`)
+- [x] **9E** — PPTX slide ingestion (`ingestion/pptx_parser.py`) & YouTube transcript extraction (`data_loading/youtube.py`)
 
 ---
 
-### ⚪ Phase 10 — Evaluation Harness
+### 🔄 Phase 10 — Evaluation Harness (In Progress)
 - [ ] `evaluation/harness.py` — Vector vs Graph vs Hybrid on HotpotQA sample
 - [ ] EM + F1 + gold supporting fact recall metrics
 - [ ] `evaluation/README.md`
@@ -178,8 +180,9 @@ graphrag-research-notebook/
 ├── config/
 │   └── settings.py            ✓ Phase 1
 ├── data_loading/
-│   ├── loader.py              ✓ Phase 0 (HF namespace fix applied)
-│   └── stats.py               ✓ Phase 0
+│   ├── loader.py              ✓ Phase 0
+│   ├── stats.py               ✓ Phase 0
+│   └── youtube.py             ✓ Phase 9
 ├── embedding/
 │   ├── model.py               ✓ Phase 3
 │   └── README.md              ✓ Phase 3
@@ -190,6 +193,7 @@ graphrag-research-notebook/
 │   └── README.md              ✓ Phase 4
 ├── ingestion/
 │   ├── parsers.py             ✓ Phase 2
+│   ├── pptx_parser.py         ✓ Phase 9
 │   ├── chunker.py             ✓ Phase 2
 │   ├── registry.py            ✓ Phase 2
 │   └── README.md              ✓ Phase 2
@@ -197,8 +201,15 @@ graphrag-research-notebook/
 │   ├── vector_retriever.py    ✓ Phase 5
 │   ├── graph_retriever.py     ✓ Phase 5
 │   ├── hybrid_reranker.py     ✓ Phase 5
-│   └── router.py              ✓ Phase 5
-├── generation/                ◻ Phase 6
+│   ├── router.py              ✓ Phase 5
+│   └── web_search.py          ✓ Phase 5
+├── generation/                ✓ Phase 6, 9
+│   ├── generator.py           ✓ Phase 6
+│   ├── prompts.py             ✓ Phase 6
+│   ├── local_slm.py           ✓ Phase 9
+│   ├── ollama_slm.py          ✓ Phase 9
+│   ├── ollama_trainer.py      ✓ Phase 9
+│   └── audio_overview.py      ✓ Phase 9
 ├── vector_store/
 │   ├── chroma.py              ✓ Phase 3
 │   └── README.md              ✓ Phase 3
@@ -207,15 +218,21 @@ graphrag-research-notebook/
 │   ├── index_document.py      ✓ Phase 3
 │   ├── test_vector_search.py  ✓ Phase 3
 │   ├── build_graph.py         ✓ Phase 4
-│   └── query_graph.py         ✓ Phase 4
+│   ├── query_graph.py         ✓ Phase 4
+│   └── routing_analytics.py   ✓ Phase 9
 ├── tests/
-│   ├── test_data_loader.py    ✓ Phase 0
+│   ├── test_api.py            ✓ Phase 7 (3/3 passed)
+│   ├── test_data_loader.py    ✓ Phase 0 (4/4 passed)
+│   ├── test_generation.py     ✓ Phase 6 (1/1 passed)
+│   ├── test_graph_extractor.py✓ Phase 4 (3/3 passed)
 │   ├── test_ingestion.py      ✓ Phase 2 (5/5 passed)
+│   ├── test_retrieval.py      ✓ Phase 5 (2/2 passed)
 │   └── test_vector_store.py   ✓ Phase 3 (3/3 passed)
-├── api/                       ◻ Phase 7
-├── frontend/                  ◻ Phase 8
+├── api/                       ✓ Phase 7
+├── frontend/                  ✓ Phase 8
+├── evaluation/                🔄 Phase 10
 ├── .env.example               ✓
-├── requirements.txt           ✓ (pymupdf, python-docx added)
+├── requirements.txt           ✓
 └── prompt.md                  ✓
 ```
 

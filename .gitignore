@@ -18,6 +18,7 @@ ENV/
 # Data & Database Persistence
 data/
 !data/.gitkeep
+evaluation/results/chroma_eval_temp/
 
 # IDE & OS Files
 .vscode/

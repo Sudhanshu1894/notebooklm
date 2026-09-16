@@ -1,0 +1,20 @@
+{
+  "vector_only": {
+    "Exact Match (EM)": 0.0,
+    "F1 Score": 0.0,
+    "Supporting Fact Recall": 100.0,
+    "Avg Latency (s)": 0.042
+  },
+  "graph_only": {
+    "Exact Match (EM)": 0.0,
+    "F1 Score": 3.85,
+    "Supporting Fact Recall": 100.0,
+    "Avg Latency (s)": 0.0012
+  },
+  "hybrid": {
+    "Exact Match (EM)": 0.0,
+    "F1 Score": 6.25,
+    "Supporting Fact Recall": 100.0,
+    "Avg Latency (s)": 0.0593
+  }
+}
