@@ -86,8 +86,8 @@ body {
 .sidebar-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   border-radius: 8px;
   cursor: pointer;
   color: var(--sidebar-text-dim);
@@ -106,24 +106,122 @@ body {
   color: var(--sidebar-text);
   font-weight: 500;
 }
-.sidebar-item .delete-btn {
+
+/* Action buttons that appear on hover */
+.sidebar-item .sidebar-actions {
   position: absolute;
-  right: 8px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
   opacity: 0;
+  transition: opacity 0.15s;
+}
+.sidebar-item:hover .sidebar-actions { opacity: 1; }
+.sidebar-item.active .sidebar-actions { opacity: 1; }
+
+.sidebar-actions .action-btn {
   background: none;
   border: none;
   cursor: pointer;
   color: var(--sidebar-text-muted);
-  padding: 4px;
+  padding: 3px 4px;
   border-radius: 4px;
   display: flex;
   align-items: center;
-  transition: opacity 0.15s, color 0.15s;
+  transition: color 0.15s, background 0.15s;
 }
-.sidebar-item:hover .delete-btn { opacity: 1; }
-.sidebar-item .delete-btn:hover { color: #ff6b6b; }
+.sidebar-actions .action-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--sidebar-text);
+}
+.sidebar-actions .action-btn.danger:hover { color: #ff6b6b; }
+.sidebar-actions .action-btn.pin-active { color: #f59e0b; }
+
+/* Pinned badge dot */
+.pin-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f59e0b;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+/* Sidebar search input */
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 7px 10px;
+  margin: 10px 12px 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sidebar-search:focus-within {
+  border-color: rgba(181,112,74,0.5);
+  background: rgba(255,255,255,0.1);
+}
+.sidebar-search input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--sidebar-text);
+  font-size: 13px;
+  width: 100%;
+  font-family: inherit;
+}
+.sidebar-search input::placeholder { color: var(--sidebar-text-muted); }
+
+/* Inline rename input */
+.rename-input {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(181,112,74,0.5);
+  border-radius: 5px;
+  color: var(--sidebar-text);
+  font-size: 13.5px;
+  font-family: inherit;
+  outline: none;
+  padding: 1px 5px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Delete confirmation modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.15s ease;
+}
+.modal-box {
+  background: #2a2a2e;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px;
+  padding: 28px 28px 22px;
+  width: 340px;
+  max-width: calc(100vw - 40px);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  animation: slideUp 0.2s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
 
 /* ── Glass panels ───────────────────────────────────────────────── */
 .glass {

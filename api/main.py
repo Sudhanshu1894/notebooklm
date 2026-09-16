@@ -54,6 +54,12 @@ class NotebookCreate(BaseModel):
     name: str
     description: Optional[str] = ""
 
+class NotebookUpdate(BaseModel):
+    name: str
+
+class NotebookPinUpdate(BaseModel):
+    is_pinned: bool
+
 class NotebookResponse(BaseModel):
     notebook_id: str
     name: str
@@ -201,6 +207,26 @@ def delete_notebook(notebook_id: str):
     return {"status": "success"}
 
 
+@app.patch("/notebooks/{notebook_id}")
+def rename_notebook(notebook_id: str, body: NotebookUpdate):
+    """Renames a notebook."""
+    nb = doc_registry.get_notebook(notebook_id)
+    if not nb:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    doc_registry.update_notebook_name(notebook_id, body.name.strip() or nb["name"])
+    return {"status": "success", "name": body.name.strip() or nb["name"]}
+
+
+@app.patch("/notebooks/{notebook_id}/pin")
+def pin_notebook(notebook_id: str, body: NotebookPinUpdate):
+    """Pins or unpins a notebook."""
+    nb = doc_registry.get_notebook(notebook_id)
+    if not nb:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    doc_registry.pin_notebook(notebook_id, body.is_pinned)
+    return {"status": "success", "is_pinned": body.is_pinned}
+
+
 @app.post("/notebooks/{notebook_id}/documents")
 async def upload_document(
     notebook_id: str,
@@ -236,6 +262,21 @@ def get_document_status(notebook_id: str, doc_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
     return doc
+
+
+@app.delete("/notebooks/{notebook_id}/documents/{doc_id}")
+def delete_document(notebook_id: str, doc_id: str):
+    """Deletes a document and cleans up its local file if present."""
+    doc = doc_registry.get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    doc_registry.delete_document(doc_id)
+    if doc.get("file_path") and os.path.exists(doc["file_path"]):
+        try:
+            os.remove(doc["file_path"])
+        except Exception as e:
+            logger.warning(f"Failed to remove file {doc['file_path']}: {e}")
+    return {"status": "success"}
 
 
 @app.get("/notebooks/{notebook_id}/sources")

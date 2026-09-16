@@ -11,9 +11,13 @@ Fallback chain: Gemini Flash -> LocalMiniModel (TF-IDF, offline)
 
 import json
 import re
+import httpx
 from typing import List, Dict, Any, Optional, Tuple
-from google import genai
 from config.settings import get_settings
+
+# Default request timeout (seconds) — prevents indefinite hangs
+_GEMINI_TIMEOUT = 45
+_GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
 # ---------------------------------------------------------------------------
@@ -170,26 +174,70 @@ def build_quiz_prompt(context_chunks: List[Dict[str, Any]], topic: str = "") -> 
 class AnswerGenerator:
     """Generates cited answers (chat or teach mode) using Gemini Flash."""
 
-    MODEL = "gemini-flash-latest"
+    MODEL = "gemini-3.5-flash"
+    # Ordered fallback list — tested against this API key:
+    # gemini-flash-latest  => ReadTimeout (hangs)
+    # gemini-3.6-flash     => 429 quota exceeded
+    # gemini-3.5-flash     => OK ~8s ✓
+    _FALLBACK_MODELS = [
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3.5-flash-lite",
+    ]
 
     def __init__(self, api_key: Optional[str] = None):
         settings = get_settings()
         self.api_key = api_key or settings.gemini_api_key
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not set in .env")
-        self.client = genai.Client(api_key=self.api_key)
+        # Use direct httpx to avoid google-genai SDK timeout issues
+        self._http = httpx.Client(
+            headers={"x-goog-api-key": self.api_key},
+            timeout=_GEMINI_TIMEOUT,
+        )
 
     def _call(self, prompt: str) -> str:
-        models_to_try = [self.MODEL, "gemini-3.6-flash", "gemini-3.5-flash-lite"]
+        """Call Gemini REST API directly with httpx (no SDK retry loop)."""
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
         last_err = None
-        for m in models_to_try:
+
+        for m in self._FALLBACK_MODELS:
+            url = f"{_GEMINI_API_BASE}/{m}:generateContent"
             try:
-                response = self.client.models.generate_content(model=m, contents=prompt)
-                if response and response.text:
-                    return response.text.strip()
-            except Exception as e:
+                resp = self._http.post(url, json=payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text = (
+                        data.get("candidates", [{}])[0]
+                        .get("content", {})
+                        .get("parts", [{}])[0]
+                        .get("text", "")
+                    )
+                    if text:
+                        print(f"[generator] Model used: {m}")
+                        return text.strip()
+                elif resp.status_code in (404, 410):
+                    # Model deprecated — try next
+                    print(f"[generator] Model {m} not available (404/410), trying next")
+                    continue
+                elif resp.status_code == 429:
+                    print(f"[generator] Model {m} quota exceeded (429), trying next")
+                    last_err = Exception(f"429 quota exceeded for {m}")
+                    continue
+                else:
+                    err_body = resp.text[:200]
+                    print(f"[generator] Model {m} error {resp.status_code}: {err_body}")
+                    last_err = Exception(f"HTTP {resp.status_code}: {err_body}")
+                    break  # Non-retriable error
+            except httpx.TimeoutException as e:
+                print(f"[generator] Model {m} timed out, trying next")
                 last_err = e
                 continue
+            except Exception as e:
+                print(f"[generator] Model {m} unexpected error: {e}")
+                last_err = e
+                break
+
         if last_err:
             raise last_err
         return ""

@@ -34,15 +34,18 @@ class DocumentRegistry:
                     user_id TEXT NOT NULL DEFAULT 'anonymous',
                     name TEXT NOT NULL,
                     description TEXT DEFAULT '',
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    is_pinned INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )
-            # Add user_id column if upgrading existing DB
+            # Add columns if upgrading existing DB
             cursor = conn.execute("PRAGMA table_info(notebooks)")
             columns = [row["name"] for row in cursor.fetchall()]
             if "user_id" not in columns:
                 conn.execute("ALTER TABLE notebooks ADD COLUMN user_id TEXT NOT NULL DEFAULT 'anonymous'")
+            if "is_pinned" not in columns:
+                conn.execute("ALTER TABLE notebooks ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0")
 
             # Documents table with notebook_id
             conn.execute(
@@ -124,6 +127,15 @@ class DocumentRegistry:
             conn.execute("UPDATE notebooks SET name = ? WHERE notebook_id = ?", (new_name, notebook_id))
             conn.commit()
 
+    def pin_notebook(self, notebook_id: str, pinned: bool):
+        """Sets the pinned state of a notebook."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE notebooks SET is_pinned = ? WHERE notebook_id = ?",
+                (1 if pinned else 0, notebook_id),
+            )
+            conn.commit()
+
     def delete_notebook(self, notebook_id: str):
         with self._get_connection() as conn:
             conn.execute("DELETE FROM notebooks WHERE notebook_id = ?", (notebook_id,))
@@ -133,7 +145,11 @@ class DocumentRegistry:
 
     def list_notebooks(self, user_id: str = "anonymous") -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
-            cursor = conn.execute("SELECT * FROM notebooks WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
+            # Pinned notebooks first, then by created_at DESC
+            cursor = conn.execute(
+                "SELECT * FROM notebooks WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC",
+                (user_id,),
+            )
             return [dict(r) for r in cursor.fetchall()]
 
     # ── Document Methods ──────────────────────────────────────────────────────
@@ -203,6 +219,12 @@ class DocumentRegistry:
             else:
                 cursor = conn.execute("SELECT * FROM documents ORDER BY created_at DESC")
             return [dict(r) for r in cursor.fetchall()]
+
+    def delete_document(self, doc_id: str):
+        """Deletes a document from the registry."""
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+            conn.commit()
 
     # ── Message Methods ───────────────────────────────────────────────────────
 

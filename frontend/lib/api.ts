@@ -6,6 +6,7 @@ export interface Notebook {
   name: string;
   description: string;
   created_at?: string;
+  is_pinned?: boolean;
 }
 
 export interface Document {
@@ -94,6 +95,25 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
   },
 
+  async renameNotebook(notebookId: string, name: string): Promise<{ name: string }> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  async pinNotebook(notebookId: string, is_pinned: boolean): Promise<void> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/pin`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_pinned }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+  },
+
   async listNotebooks(): Promise<Notebook[]> {
     const res = await fetch(`${API_BASE}/notebooks`);
     if (!res.ok) throw new Error(await res.text());
@@ -121,6 +141,13 @@ export const api = {
     const res = await fetch(`${API_BASE}/notebooks/${notebookId}/sources`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
+  },
+
+  async deleteDocument(notebookId: string, docId: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/documents/${docId}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) throw new Error(await res.text());
   },
 
   async chat(notebookId: string, query: string, topK = 5, mode: "auto" | "chat" | "teach" = "auto", modelPreference: string = "auto"): Promise<ChatResponse> {
