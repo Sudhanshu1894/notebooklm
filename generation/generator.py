@@ -170,7 +170,7 @@ def build_quiz_prompt(context_chunks: List[Dict[str, Any]], topic: str = "") -> 
 class AnswerGenerator:
     """Generates cited answers (chat or teach mode) using Gemini Flash."""
 
-    MODEL = "gemini-2.5-flash"
+    MODEL = "gemini-flash-latest"
 
     def __init__(self, api_key: Optional[str] = None):
         settings = get_settings()
@@ -180,8 +180,19 @@ class AnswerGenerator:
         self.client = genai.Client(api_key=self.api_key)
 
     def _call(self, prompt: str) -> str:
-        response = self.client.models.generate_content(model=self.MODEL, contents=prompt)
-        return response.text.strip() if response and response.text else ""
+        models_to_try = [self.MODEL, "gemini-3.6-flash", "gemini-3.5-flash-lite"]
+        last_err = None
+        for m in models_to_try:
+            try:
+                response = self.client.models.generate_content(model=m, contents=prompt)
+                if response and response.text:
+                    return response.text.strip()
+            except Exception as e:
+                last_err = e
+                continue
+        if last_err:
+            raise last_err
+        return ""
 
     def generate(
         self,

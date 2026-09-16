@@ -36,15 +36,18 @@ class LocalSLM:
         self.model_id = model_id or self.DEFAULT_MODEL
         print(f"[LocalSLM] Loading model: {self.model_id}")
         
-        # We load with bfloat16 if supported, otherwise float16, and use device_map="auto"
-        # for automatic GPU/CPU placement.
-        dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
+        if torch.cuda.is_available():
+            dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+            device_map = "auto"
+        else:
+            dtype = torch.float32
+            device_map = None
         
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_id,
             torch_dtype=dtype,
-            device_map="auto",
+            device_map=device_map,
         )
 
         if adapter_path:

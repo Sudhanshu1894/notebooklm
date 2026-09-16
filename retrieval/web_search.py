@@ -3,7 +3,7 @@ Web Search Fallback using duckduckgo-search.
 """
 
 from typing import List, Dict, Any
-import ddgs
+from duckduckgo_search import DDGS
 import uuid
 
 class WebSearcher:
@@ -20,7 +20,7 @@ class WebSearcher:
         """
         chunks = []
         try:
-            results = list(ddgs.DDGS().text(query, max_results=self.max_results))
+            results = list(DDGS().text(query, max_results=self.max_results))
                 
             for res in results:
                 chunks.append({
