@@ -174,12 +174,10 @@ def build_quiz_prompt(context_chunks: List[Dict[str, Any]], topic: str = "") -> 
 class AnswerGenerator:
     """Generates cited answers (chat or teach mode) using Gemini Flash."""
 
-    MODEL = "gemini-3.5-flash"
-    # Ordered fallback list — tested against this API key:
-    # gemini-flash-latest  => ReadTimeout (hangs)
-    # gemini-3.6-flash     => 429 quota exceeded
-    # gemini-3.5-flash     => OK ~8s ✓
+    MODEL = "gemini-2.0-flash"
+    # Ordered fallback list:
     _FALLBACK_MODELS = [
+        "gemini-2.0-flash",
         "gemini-3.5-flash",
         "gemini-3.1-flash-lite",
         "gemini-3.5-flash-lite",
