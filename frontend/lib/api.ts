@@ -1,5 +1,5 @@
 // Central API client for GraphRAG backend
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export interface Notebook {
   notebook_id: string;
@@ -41,6 +41,7 @@ export interface GraphData {
   nodes: { id: string; name: string; type: string; source_chunk_ids: string[] }[];
   edges: { source: string; target: string; label: string; description: string }[];
   demo_mode?: boolean;
+  error?: string;
 }
 
 export interface QuizQuestion {
@@ -55,6 +56,25 @@ export interface QuizQuestion {
 export interface QuizResponse {
   questions: QuizQuestion[];
   error?: string;
+}
+
+export interface KnowledgeItem {
+  id: number;
+  notebook_id: string;
+  doc_id: string;
+  knowledge_type: "summary" | "entity" | "concept" | "fact";
+  content: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface KnowledgeStats {
+  notebook_id: string;
+  documents_trained: number;
+  total_items: number;
+  by_type: Record<string, number>;
+  ollama_model: string | null;
+  ollama_available: boolean;
 }
 
 export const api = {
@@ -103,11 +123,11 @@ export const api = {
     return res.json();
   },
 
-  async chat(notebookId: string, query: string, topK = 5, mode: "auto" | "chat" | "teach" = "auto"): Promise<ChatResponse> {
+  async chat(notebookId: string, query: string, topK = 5, mode: "auto" | "chat" | "teach" = "auto", modelPreference: string = "auto"): Promise<ChatResponse> {
     const res = await fetch(`${API_BASE}/notebooks/${notebookId}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, top_k: topK, mode }),
+      body: JSON.stringify({ query, top_k: topK, mode, model_preference: modelPreference }),
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
@@ -131,6 +151,35 @@ export const api = {
 
   async getGraph(notebookId: string): Promise<GraphData> {
     const res = await fetch(`${API_BASE}/notebooks/${notebookId}/graph`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  async buildGraph(notebookId: string): Promise<{ status: string; documents: number }> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/build-graph`, {
+      method: "POST",
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  async getKnowledge(notebookId: string, type?: string): Promise<{ items: KnowledgeItem[]; count: number }> {
+    const url = type
+      ? `${API_BASE}/notebooks/${notebookId}/knowledge?knowledge_type=${type}`
+      : `${API_BASE}/notebooks/${notebookId}/knowledge`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  async getKnowledgeStats(notebookId: string): Promise<KnowledgeStats> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/knowledge/stats`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  async getSystemPrompt(notebookId: string): Promise<{ system_prompt: string }> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/knowledge/system-prompt`);
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },

@@ -266,16 +266,20 @@ def generate_with_fallback(
     query: str,
     context_chunks: List[Dict[str, Any]],
     mode: str = "auto",
+    model_preference: str = "auto",
+    notebook_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Try generators in order, falling back on quota/rate-limit errors:
       1. Gemini Flash (primary) -- supports chat, teach, auto modes
       2. LocalMiniModel (offline TF-IDF) -- extractive, always available
+    Respects model_preference: 'auto' (cascade), 'gemini' (force Gemini), 'local' (force Ollama).
     """
     settings = get_settings()
     tried: list = []
 
-    if settings.gemini_api_key:
+    # If preference is explicitly 'local', skip Gemini
+    if model_preference != "local" and settings.gemini_api_key:
         try:
             gen = AnswerGenerator(api_key=settings.gemini_api_key)
             result = gen.generate(query, context_chunks, mode=mode)
@@ -283,22 +287,25 @@ def generate_with_fallback(
             return result
         except Exception as e:
             tried.append(f"Gemini: {e}")
-            print(f"[generate_with_fallback] Gemini failed ({e}), falling back to LocalMiniModel...")
-    else:
+            print(f"[generate_with_fallback] Gemini failed ({e}), falling back to local...")
+            # If user explicitly requested gemini but it failed, we still fallback unless we shouldn't? 
+            # Usually fallback is better than error, but let's just log it.
+    elif model_preference == "gemini" and not settings.gemini_api_key:
         tried.append("Gemini: no API key")
 
-    from generation.local_slm import LocalSLM
-    print("[generate_with_fallback] Using LocalSLM (Hugging Face Transformers).")
+    # Local fallback or forced local
+    from generation.ollama_slm import OllamaSLM
+    print(f"[generate_with_fallback] Using OllamaSLM (Local Ollama API).")
     try:
-        local = LocalSLM()
+        local = OllamaSLM(notebook_id=notebook_id)
         # Honour the mode: use structured teaching if requested
         if mode == "teach" or (mode == "auto" and _is_teaching_intent(query)):
             result = local.generate_teach(query, context_chunks)
         else:
             result = local.generate(query, context_chunks)
-        result["_generator"] = "local_slm"
+        result["_generator"] = "ollama_slm"
     except Exception as e:
-        print(f"[generate_with_fallback] LocalSLM failed: {e}")
+        print(f"[generate_with_fallback] OllamaSLM failed: {e}")
         result = {
             "answer_text": f"Error: Local model unavailable ({e})",
             "citations": [],
@@ -310,3 +317,4 @@ def generate_with_fallback(
 
     result["_fallback_reason"] = " | ".join(tried)
     return result
+

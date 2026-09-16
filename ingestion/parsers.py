@@ -141,10 +141,13 @@ class TXTParser:
 class ParserRegistry:
     """Format-to-parser registry for extensible file format handling."""
     def __init__(self):
+        from ingestion.pptx_parser import PPTXParser
         self._parsers: Dict[str, DocumentParser] = {
             ".pdf": PDFParser(),
             ".docx": DOCXParser(),
             ".txt": TXTParser(),
+            ".pptx": PPTXParser(),
+            ".ppt": PPTXParser(),  # .ppt files saved as .pptx will work; pure .ppt needs conversion
         }
 
     def register_parser(self, extension: str, parser: DocumentParser):
