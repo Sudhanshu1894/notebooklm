@@ -315,8 +315,10 @@ def chat(notebook_id: str, body: ChatRequest):
         generator_name = result.pop("_generator", "gemini")
         result.pop("_fallback_reason", None)
         
-        # 2. Web Search Fallback (only for Gemini / Groq answers, not local)
-        if result["is_insufficient"] and generator_name != "local_mini_model":
+        # 2. Web Search Fallback (only for Gemini answers, never when user forced local model)
+        _is_local = generator_name in ("ollama_slm", "local_mini_model", "none")
+        _user_forced_local = (body.model_preference or "auto") == "local"
+        if result["is_insufficient"] and not _is_local and not _user_forced_local:
             print("[chat] Local context insufficient. Falling back to web search...")
             web_searcher = WebSearcher()
             web_chunks = web_searcher.search(body.query)
@@ -340,10 +342,11 @@ def chat(notebook_id: str, body: ChatRequest):
             is_insufficient=result["is_insufficient"],
         )
 
-        # 3. Auto-rename notebook if it has default name (only when Gemini is active)
+        # 3. Auto-rename notebook if it has default name (only when Gemini is active, not local)
         nb = doc_registry.get_notebook(notebook_id)
         new_title = None
-        if nb and nb.get("name", "").startswith("Research Chat") and generator_name == "gemini":
+        _is_local_gen = generator_name in ("ollama_slm", "local_mini_model", "none")
+        if nb and nb.get("name", "").startswith("Research Chat") and not _is_local_gen:
             try:
                 from generation.generator import AnswerGenerator
                 _gen = AnswerGenerator()
@@ -356,7 +359,7 @@ def chat(notebook_id: str, body: ChatRequest):
                 print(f"[chat] Failed to auto-rename notebook: {e}")
 
         # Append generator name to route so frontend can indicate which model answered
-        effective_route = f"{route}:{generator_name}" if generator_name != "gemini" else route
+        effective_route = f"{route}:{generator_name}" if generator_name not in ("gemini",) else route
 
         return ChatResponse(
             query=body.query,

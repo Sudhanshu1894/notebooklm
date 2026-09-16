@@ -170,7 +170,7 @@ def build_quiz_prompt(context_chunks: List[Dict[str, Any]], topic: str = "") -> 
 class AnswerGenerator:
     """Generates cited answers (chat or teach mode) using Gemini Flash."""
 
-    MODEL = "gemini-3.6-flash"
+    MODEL = "gemini-2.0-flash"
 
     def __init__(self, api_key: Optional[str] = None):
         settings = get_settings()
