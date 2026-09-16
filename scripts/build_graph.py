@@ -6,6 +6,7 @@ Extracts entities and relationships from document chunks via Gemini Flash and in
 import sys
 import os
 import argparse
+from typing import Dict
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 

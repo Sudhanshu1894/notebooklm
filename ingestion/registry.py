@@ -31,12 +31,19 @@ class DocumentRegistry:
                 """
                 CREATE TABLE IF NOT EXISTS notebooks (
                     notebook_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL DEFAULT 'anonymous',
                     name TEXT NOT NULL,
                     description TEXT DEFAULT '',
                     created_at TEXT NOT NULL
                 )
                 """
             )
+            # Add user_id column if upgrading existing DB
+            cursor = conn.execute("PRAGMA table_info(notebooks)")
+            columns = [row["name"] for row in cursor.fetchall()]
+            if "user_id" not in columns:
+                conn.execute("ALTER TABLE notebooks ADD COLUMN user_id TEXT NOT NULL DEFAULT 'anonymous'")
+
             # Documents table with notebook_id
             conn.execute(
                 """
@@ -76,19 +83,35 @@ class DocumentRegistry:
                 """
             )
 
+            # Knowledge table — stores extracted summaries, entities, facts per notebook
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notebook_knowledge (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    notebook_id TEXT NOT NULL,
+                    doc_id TEXT NOT NULL,
+                    knowledge_type TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    metadata TEXT DEFAULT '{}',
+                    created_at TEXT NOT NULL,
+                    UNIQUE(notebook_id, doc_id, knowledge_type, content)
+                )
+                """
+            )
+
             conn.commit()
 
     # ── Notebook Methods ──────────────────────────────────────────────────────
 
-    def create_notebook(self, notebook_id: str, name: str, description: str = "") -> Dict[str, Any]:
+    def create_notebook(self, notebook_id: str, name: str, description: str = "", user_id: str = "anonymous") -> Dict[str, Any]:
         now = datetime.now().isoformat()
         with self._get_connection() as conn:
             conn.execute(
-                "INSERT OR REPLACE INTO notebooks (notebook_id, name, description, created_at) VALUES (?, ?, ?, ?)",
-                (notebook_id, name, description, now),
+                "INSERT OR REPLACE INTO notebooks (notebook_id, user_id, name, description, created_at) VALUES (?, ?, ?, ?, ?)",
+                (notebook_id, user_id, name, description, now),
             )
             conn.commit()
-        return {"notebook_id": notebook_id, "name": name, "description": description, "created_at": now}
+        return {"notebook_id": notebook_id, "user_id": user_id, "name": name, "description": description, "created_at": now}
 
     def get_notebook(self, notebook_id: str) -> Optional[Dict[str, Any]]:
         with self._get_connection() as conn:
@@ -108,9 +131,9 @@ class DocumentRegistry:
             conn.execute("DELETE FROM documents WHERE notebook_id = ?", (notebook_id,))
             conn.commit()
 
-    def list_notebooks(self) -> List[Dict[str, Any]]:
+    def list_notebooks(self, user_id: str = "anonymous") -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
-            cursor = conn.execute("SELECT * FROM notebooks ORDER BY created_at DESC")
+            cursor = conn.execute("SELECT * FROM notebooks WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
             return [dict(r) for r in cursor.fetchall()]
 
     # ── Document Methods ──────────────────────────────────────────────────────
@@ -218,3 +241,114 @@ class DocumentRegistry:
                 msg["is_insufficient"] = bool(msg["is_insufficient"])
                 messages.append(msg)
             return messages
+
+    # ── Knowledge Methods ─────────────────────────────────────────────────────
+
+    def save_knowledge(
+        self,
+        notebook_id: str,
+        doc_id: str,
+        knowledge_type: str,
+        content: str,
+        metadata: Dict[str, Any] = None,
+    ):
+        """Saves a knowledge item. Ignores duplicates (UNIQUE constraint)."""
+        now = datetime.now().isoformat()
+        meta_json = json.dumps(metadata) if metadata else "{}"
+        with self._get_connection() as conn:
+            try:
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO notebook_knowledge
+                    (notebook_id, doc_id, knowledge_type, content, metadata, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (notebook_id, doc_id, knowledge_type, content, meta_json, now),
+                )
+                conn.commit()
+            except Exception:
+                pass  # Silently ignore duplicates
+
+    def save_knowledge_batch(
+        self,
+        notebook_id: str,
+        doc_id: str,
+        items: List[Dict[str, Any]],
+    ):
+        """Batch insert knowledge items. Each item: {type, content, metadata?}."""
+        now = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            for item in items:
+                meta_json = json.dumps(item.get("metadata", {}))
+                try:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO notebook_knowledge
+                        (notebook_id, doc_id, knowledge_type, content, metadata, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (notebook_id, doc_id, item["type"], item["content"], meta_json, now),
+                    )
+                except Exception:
+                    pass
+            conn.commit()
+
+    def get_knowledge(
+        self, notebook_id: str, knowledge_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Returns knowledge items for a notebook, optionally filtered by type."""
+        with self._get_connection() as conn:
+            if knowledge_type:
+                cursor = conn.execute(
+                    "SELECT * FROM notebook_knowledge WHERE notebook_id = ? AND knowledge_type = ? ORDER BY created_at DESC",
+                    (notebook_id, knowledge_type),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT * FROM notebook_knowledge WHERE notebook_id = ? ORDER BY knowledge_type, created_at DESC",
+                    (notebook_id,),
+                )
+            rows = cursor.fetchall()
+            results = []
+            for row in rows:
+                item = dict(row)
+                item["metadata"] = json.loads(item["metadata"]) if item["metadata"] else {}
+                results.append(item)
+            return results
+
+    def get_knowledge_stats(self, notebook_id: str) -> Dict[str, Any]:
+        """Returns counts of knowledge items by type for a notebook."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT knowledge_type, COUNT(*) as count FROM notebook_knowledge WHERE notebook_id = ? GROUP BY knowledge_type",
+                (notebook_id,),
+            )
+            type_counts = {row["knowledge_type"]: row["count"] for row in cursor.fetchall()}
+
+            cursor2 = conn.execute(
+                "SELECT COUNT(DISTINCT doc_id) as doc_count FROM notebook_knowledge WHERE notebook_id = ?",
+                (notebook_id,),
+            )
+            doc_count = cursor2.fetchone()["doc_count"]
+
+            return {
+                "notebook_id": notebook_id,
+                "documents_trained": doc_count,
+                "total_items": sum(type_counts.values()),
+                "by_type": type_counts,
+            }
+
+    def delete_knowledge(self, notebook_id: str, doc_id: Optional[str] = None):
+        """Deletes knowledge for a notebook (optionally scoped to a specific doc)."""
+        with self._get_connection() as conn:
+            if doc_id:
+                conn.execute(
+                    "DELETE FROM notebook_knowledge WHERE notebook_id = ? AND doc_id = ?",
+                    (notebook_id, doc_id),
+                )
+            else:
+                conn.execute(
+                    "DELETE FROM notebook_knowledge WHERE notebook_id = ?",
+                    (notebook_id,),
+                )
+            conn.commit()

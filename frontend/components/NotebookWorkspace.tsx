@@ -4,9 +4,10 @@ import { Notebook, Document, ChatResponse, Citation, api } from "@/lib/api";
 import GraphExplorer from "./GraphExplorer";
 import TeachingMessage from "./TeachingMessage";
 import QuizMode from "./QuizMode";
+import KnowledgeExplorer from "./KnowledgeExplorer";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Check, Volume2, VolumeX, Network, MessageSquare, Paperclip, ArrowUp, BookOpen, Brain, GraduationCap } from "lucide-react";
+import { Copy, Check, Volume2, VolumeX, Network, MessageSquare, Paperclip, ArrowUp, BookOpen, Brain, GraduationCap, Database } from "lucide-react";
 
 interface Message {
   id: string;
@@ -119,9 +120,10 @@ export default function NotebookWorkspace({
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
-  const [activeTab, setActiveTab] = useState<"chat" | "graph" | "quiz">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "graph" | "quiz" | "knowledge">("chat");
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [chatMode, setChatMode] = useState<"auto" | "teach">("auto");
+  const [modelPreference, setModelPreference] = useState<"auto" | "gemini" | "local">("auto");
 
   const fileRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -200,7 +202,7 @@ export default function NotebookWorkspace({
     setMessages((p) => [...p, userMsg]);
     setSending(true);
     try {
-      const result: ChatResponse = await api.chat(notebook.notebook_id, q, 5, chatMode);
+      const result: ChatResponse = await api.chat(notebook.notebook_id, q, 5, chatMode, modelPreference);
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
@@ -223,7 +225,7 @@ export default function NotebookWorkspace({
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", background: "var(--bg-base)" }}>
       {/* Always-mounted file input — shared by chat bar and Sources panel */}
-      <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" style={{ display: "none" }} onChange={handleUpload} />
+      <input ref={fileRef} type="file" accept=".pdf,.docx,.txt,.pptx,.ppt" style={{ display: "none" }} onChange={handleUpload} />
 
       {/* ── Header ─────────────────────────────────────────────── */}
       <header style={{
@@ -241,7 +243,7 @@ export default function NotebookWorkspace({
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 4, background: "#f0ece6", borderRadius: 10, padding: 3 }}>
-          {(["chat", "quiz", "graph"] as const).map((tab) => (
+          {(["chat", "quiz", "knowledge", "graph"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -255,8 +257,8 @@ export default function NotebookWorkspace({
                 transition: "all 0.18s",
               }}
             >
-              {tab === "chat" ? <MessageSquare size={13} /> : tab === "quiz" ? <Brain size={13} /> : <Network size={13} />}
-              {tab === "chat" ? "Chat" : tab === "quiz" ? "Quiz" : "Graph"}
+              {tab === "chat" ? <MessageSquare size={13} /> : tab === "quiz" ? <Brain size={13} /> : tab === "knowledge" ? <Database size={13} /> : <Network size={13} />}
+              {tab === "chat" ? "Chat" : tab === "quiz" ? "Quiz" : tab === "knowledge" ? "Knowledge" : "Graph"}
             </button>
           ))}
         </div>
@@ -287,6 +289,8 @@ export default function NotebookWorkspace({
             <GraphExplorer notebookId={notebook.notebook_id} />
           ) : activeTab === "quiz" ? (
             <QuizMode notebookId={notebook.notebook_id} />
+          ) : activeTab === "knowledge" ? (
+            <KnowledgeExplorer notebookId={notebook.notebook_id} />
           ) : (
             <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
 
@@ -529,6 +533,25 @@ export default function NotebookWorkspace({
                         <GraduationCap size={13} />
                         {chatMode === "teach" ? "Teach" : "Teach"}
                       </button>
+
+                      {/* Model toggle */}
+                      <select
+                        value={modelPreference}
+                        onChange={(e) => setModelPreference(e.target.value as any)}
+                        title="Select Model"
+                        style={{
+                          marginBottom: 4, flexShrink: 0,
+                          padding: "5px 10px", borderRadius: 7, border: "1px solid var(--border)",
+                          background: "var(--bg-panel)",
+                          color: "var(--text-primary)",
+                          fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                          outline: "none",
+                        }}
+                      >
+                        <option value="auto">Auto Model</option>
+                        <option value="gemini">Gemini</option>
+                        <option value="local">Local SLM</option>
+                      </select>
 
                       <textarea
                         ref={textareaRef}

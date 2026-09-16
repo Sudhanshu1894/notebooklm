@@ -40,7 +40,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -63,6 +63,7 @@ class ChatRequest(BaseModel):
     query: str
     top_k: Optional[int] = 5
     mode: Optional[str] = "auto"  # "auto" | "chat" | "teach"
+    model_preference: Optional[str] = "auto"
 
 class CitationItem(BaseModel):
     citation_number: int
@@ -105,7 +106,7 @@ class HealthResponse(BaseModel):
 # ─── Utility ──────────────────────────────────────────────────────────────────
 
 def _process_document_background(file_path: str, doc_id: str, notebook_id: str):
-    """Background task: parse → chunk → embed → ChromaDB."""
+    """Background task: parse → chunk → embed → ChromaDB → extract knowledge → train Ollama."""
     try:
         doc_registry.update_status(doc_id, "parsing")
         parsed = global_parser_registry.parse_file(file_path, doc_id=doc_id)
@@ -125,6 +126,49 @@ def _process_document_background(file_path: str, doc_id: str, notebook_id: str):
         embeddings = embedder.embed_texts([c.text for c in chunks])
         vs = VectorStore()
         vs.upsert_chunks(notebook_id, chunks, embeddings)
+
+        # Build knowledge graph: extract entities/relationships and upsert into Neo4j
+        settings = get_settings()
+        if settings.neo4j_uri and settings.neo4j_password:
+            doc_registry.update_status(doc_id, "building_graph")
+            try:
+                from graph_store.extractor import GraphExtractor
+                from graph_store.neo4j_client import Neo4jGraphStore
+                extractor = GraphExtractor()
+                neo4j_store = Neo4jGraphStore()
+                total_nodes = 0
+                total_edges = 0
+                for idx, chunk in enumerate(chunks):
+                    chunk_id = chunk.chunk_id if hasattr(chunk, 'chunk_id') else f"{doc_id}_chunk_{idx}"
+                    extracted = extractor.extract_from_text(chunk.text, chunk_id=chunk_id)
+                    entities = extracted.get("entities", [])
+                    relationships = extracted.get("relationships", [])
+                    if entities or relationships:
+                        stats = neo4j_store.upsert_graph_data(
+                            notebook_id=notebook_id,
+                            entities=entities,
+                            relationships=relationships,
+                        )
+                        total_nodes += stats["nodes"]
+                        total_edges += stats["edges"]
+                neo4j_store.close()
+                print(f"[background] Graph built for doc '{doc_id}': {total_nodes} nodes, {total_edges} edges")
+            except Exception as graph_err:
+                print(f"[background] Graph extraction warning (non-fatal): {graph_err}")
+
+        # Extract knowledge and train Ollama model
+        doc_registry.update_status(doc_id, "training")
+        try:
+            from generation.ollama_trainer import OllamaTrainer
+            trainer = OllamaTrainer()
+            # Convert chunk objects to dicts for the trainer
+            chunk_dicts = [{"text": c.text, "chunk_id": c.chunk_id if hasattr(c, 'chunk_id') else f"{doc_id}_chunk_{i}",
+                           "metadata": {"doc_id": doc_id, "page_number": getattr(c, 'page_number', '?')}}
+                          for i, c in enumerate(chunks)]
+            trainer.train_on_chunks(notebook_id, doc_id, chunk_dicts)
+        except Exception as train_err:
+            print(f"[background] Knowledge extraction/training warning (non-fatal): {train_err}")
+
         doc_registry.update_status(doc_id, "ready", chunk_count=len(chunks))
     except Exception as e:
         doc_registry.update_status(doc_id, "failed", error_message=str(e))
@@ -261,7 +305,13 @@ def chat(notebook_id: str, body: ChatRequest):
         # Generation — cascades through Gemini -> Groq -> LocalMiniModel automatically
         # Pass the mode from the request body ("auto" | "chat" | "teach")
         from generation.generator import generate_with_fallback
-        result = generate_with_fallback(body.query, context_chunks, mode=body.mode or "auto")
+        result = generate_with_fallback(
+            body.query, 
+            context_chunks, 
+            mode=body.mode or "auto",
+            model_preference=body.model_preference or "auto",
+            notebook_id=notebook_id
+        )
         generator_name = result.pop("_generator", "gemini")
         result.pop("_fallback_reason", None)
         
@@ -393,11 +443,106 @@ def get_graph(notebook_id: str):
     if not settings.neo4j_uri:
         # Return empty graph in demo mode
         return {"nodes": [], "edges": [], "demo_mode": True}
-    from graph_store.neo4j_client import Neo4jGraphStore
-    store = Neo4jGraphStore()
-    graph = store.get_notebook_graph(notebook_id)
-    store.close()
-    return graph
+    try:
+        from graph_store.neo4j_client import Neo4jGraphStore
+        store = Neo4jGraphStore()
+        graph = store.get_notebook_graph(notebook_id)
+        store.close()
+        return graph
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[graph] Neo4j connection error: {error_msg}")
+        return {"nodes": [], "edges": [], "error": error_msg}
+
+
+@app.post("/notebooks/{notebook_id}/build-graph")
+def build_graph(notebook_id: str, background_tasks: BackgroundTasks):
+    """Manually triggers graph building for all ready documents in a notebook."""
+    settings = get_settings()
+    if not settings.neo4j_uri or not settings.neo4j_password:
+        raise HTTPException(status_code=400, detail="Neo4j credentials not configured. Set NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD in .env")
+
+    docs = doc_registry.list_documents(notebook_id=notebook_id)
+    ready_docs = [d for d in docs if d["status"] == "ready"]
+    if not ready_docs:
+        raise HTTPException(status_code=400, detail="No ready documents found in this notebook.")
+
+    def _build_graph_task():
+        try:
+            from graph_store.extractor import GraphExtractor
+            from graph_store.neo4j_client import Neo4jGraphStore
+            extractor = GraphExtractor()
+            neo4j_store = Neo4jGraphStore()
+            total_nodes = 0
+            total_edges = 0
+
+            for doc in ready_docs:
+                doc_id = doc["doc_id"]
+                file_path = doc["file_path"]
+                if not os.path.exists(file_path):
+                    print(f"[build_graph] Skipping missing file: {file_path}")
+                    continue
+
+                parsed = global_parser_registry.parse_file(file_path, doc_id=doc_id)
+                chunks = chunk_parsed_document(parsed)
+
+                for idx, chunk in enumerate(chunks):
+                    chunk_id = chunk.chunk_id if hasattr(chunk, 'chunk_id') else f"{doc_id}_chunk_{idx}"
+                    extracted = extractor.extract_from_text(chunk.text, chunk_id=chunk_id)
+                    entities = extracted.get("entities", [])
+                    relationships = extracted.get("relationships", [])
+                    if entities or relationships:
+                        stats = neo4j_store.upsert_graph_data(
+                            notebook_id=notebook_id,
+                            entities=entities,
+                            relationships=relationships,
+                        )
+                        total_nodes += stats["nodes"]
+                        total_edges += stats["edges"]
+
+            neo4j_store.close()
+            print(f"[build_graph] Complete for notebook '{notebook_id}': {total_nodes} nodes, {total_edges} edges")
+        except Exception as e:
+            print(f"[build_graph] Error: {e}")
+
+    background_tasks.add_task(_build_graph_task)
+    return {"status": "building", "documents": len(ready_docs)}
+
+
+@app.get("/notebooks/{notebook_id}/knowledge")
+def get_knowledge(notebook_id: str, knowledge_type: Optional[str] = None):
+    """Returns extracted knowledge items for a notebook (summaries, entities, concepts, facts)."""
+    items = doc_registry.get_knowledge(notebook_id, knowledge_type)
+    return {"notebook_id": notebook_id, "items": items, "count": len(items)}
+
+
+@app.get("/notebooks/{notebook_id}/knowledge/stats")
+def get_knowledge_stats(notebook_id: str):
+    """Returns knowledge statistics for a notebook."""
+    stats = doc_registry.get_knowledge_stats(notebook_id)
+    # Check if Ollama custom model exists
+    try:
+        from generation.ollama_trainer import OllamaTrainer
+        trainer = OllamaTrainer()
+        model_name = trainer.get_model_name(notebook_id)
+        stats["ollama_model"] = model_name
+        stats["ollama_available"] = model_name is not None
+    except Exception:
+        stats["ollama_model"] = None
+        stats["ollama_available"] = False
+    return stats
+
+
+@app.get("/notebooks/{notebook_id}/knowledge/system-prompt")
+def get_knowledge_system_prompt(notebook_id: str):
+    """Returns the SYSTEM prompt that is injected into the Ollama model for transparency."""
+    try:
+        from generation.ollama_trainer import OllamaTrainer
+        trainer = OllamaTrainer()
+        prompt = trainer.get_system_prompt(notebook_id)
+        return {"notebook_id": notebook_id, "system_prompt": prompt}
+    except Exception as e:
+        return {"notebook_id": notebook_id, "system_prompt": f"Error: {e}"}
 
 
 @app.get("/api/dataset/sample-stats")

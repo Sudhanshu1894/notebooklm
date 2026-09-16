@@ -117,7 +117,7 @@ class GraphExtractor:
         """Helper calling Gemini Flash API."""
         try:
             response = self.client.models.generate_content(
-                model="gemini-flash-latest",
+                model="gemini-3.6-flash",
                 contents=f"{EXTRACTION_SYSTEM_PROMPT}\n\n{prompt}",
             )
             return response.text if response and response.text else ""

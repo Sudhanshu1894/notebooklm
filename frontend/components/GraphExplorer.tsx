@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { api, GraphData } from "@/lib/api";
 
 export default function GraphExplorer({ notebookId }: { notebookId: string }) {
@@ -7,14 +7,53 @@ export default function GraphExplorer({ notebookId }: { notebookId: string }) {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<GraphData["nodes"][0] | null>(null);
   const [search, setSearch] = useState("");
+  const [building, setBuilding] = useState(false);
+  const [buildMessage, setBuildMessage] = useState("");
   const svgRef = useRef<SVGSVGElement>(null);
 
-  useEffect(() => {
+  const loadGraph = useCallback(() => {
+    setLoading(true);
     api.getGraph(notebookId)
       .then(setGraph)
       .catch(() => setGraph({ nodes: [], edges: [], demo_mode: true }))
       .finally(() => setLoading(false));
   }, [notebookId]);
+
+  useEffect(() => {
+    loadGraph();
+  }, [loadGraph]);
+
+  const handleBuildGraph = async () => {
+    setBuilding(true);
+    setBuildMessage("");
+    try {
+      const res = await api.buildGraph(notebookId);
+      setBuildMessage(`Building graph from ${res.documents} document(s)… This may take a minute.`);
+      // Poll for completion — reload graph every 5s for up to 2 minutes
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        try {
+          const g = await api.getGraph(notebookId);
+          if (g.nodes.length > 0 || attempts >= 24) {
+            clearInterval(poll);
+            setGraph(g);
+            setBuilding(false);
+            setBuildMessage(g.nodes.length > 0 ? "" : "Graph building may still be in progress. Click Refresh to check.");
+          }
+        } catch {
+          if (attempts >= 24) {
+            clearInterval(poll);
+            setBuilding(false);
+            setBuildMessage("Graph building may still be in progress. Click Refresh to check.");
+          }
+        }
+      }, 5000);
+    } catch (err) {
+      setBuildMessage(`Error: ${err}`);
+      setBuilding(false);
+    }
+  };
 
   const filteredNodes = graph?.nodes.filter((n) =>
     n.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -35,10 +74,28 @@ export default function GraphExplorer({ notebookId }: { notebookId: string }) {
     };
   });
 
+  // Colors matching all entity types the extractor can produce
   const TYPE_COLORS: Record<string, string> = {
-    PERSON: "#6c63ff", ORG: "#38bdf8", CONCEPT: "#a78bfa",
-    PLACE: "#22c55e", EVENT: "#f59e0b", WORK: "#fb7185",
+    PERSON: "#6c63ff",
+    ORGANIZATION: "#38bdf8",
+    ORG: "#38bdf8",
+    CONCEPT: "#a78bfa",
+    LOCATION: "#22c55e",
+    PLACE: "#22c55e",
+    EVENT: "#f59e0b",
+    PRODUCT: "#fb7185",
+    WORK: "#f472b6",
   };
+
+  // Deduplicate legend entries (ORG/ORGANIZATION → same color)
+  const LEGEND_ENTRIES: [string, string][] = [
+    ["PERSON", "#6c63ff"],
+    ["ORGANIZATION", "#38bdf8"],
+    ["CONCEPT", "#a78bfa"],
+    ["LOCATION", "#22c55e"],
+    ["EVENT", "#f59e0b"],
+    ["PRODUCT", "#fb7185"],
+  ];
 
   if (loading) {
     return (
@@ -58,17 +115,65 @@ export default function GraphExplorer({ notebookId }: { notebookId: string }) {
           <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Knowledge Graph</span>
           {graph?.demo_mode && <span className="badge badge-pending">Demo mode — add Neo4j credentials to see live graph</span>}
           {!isEmpty && <span className="badge badge-vector">{graph!.nodes.length} entities · {graph!.edges.length} relations</span>}
+          <button
+            onClick={loadGraph}
+            disabled={loading}
+            title="Refresh graph"
+            style={{
+              background: "none", border: "1px solid var(--border)", borderRadius: 6,
+              padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 600,
+              color: "var(--text-dim)", display: "flex", alignItems: "center", gap: 5,
+              transition: "all 0.18s",
+            }}
+          >
+            ↻ Refresh
+          </button>
           <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter entities..." style={{ marginLeft: "auto", width: 200 }} />
         </div>
 
         {isEmpty ? (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, color: "var(--text-dim)" }}>
             <span style={{ fontSize: 48 }}>⬡</span>
-            <p style={{ fontSize: 14, textAlign: "center", maxWidth: 340 }}>
-              {graph?.demo_mode
-                ? "Add NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD to .env and run scripts/build_graph.py to build the knowledge graph."
-                : "No entities found. Index a document and run scripts/build_graph.py first."}
-            </p>
+            {graph?.error ? (
+              <p style={{ fontSize: 13, textAlign: "center", maxWidth: 420, color: "#e85d5d", lineHeight: 1.6 }}>
+                ⚠ Neo4j connection error: {graph.error.includes("Unauthorized") || graph.error.includes("authentication")
+                  ? "Authentication failed. Check NEO4J_USER and NEO4J_PASSWORD in your .env file. If using AuraDB Free Tier, ensure your instance hasn't paused due to inactivity."
+                  : graph.error}
+              </p>
+            ) : (
+              <p style={{ fontSize: 14, textAlign: "center", maxWidth: 340 }}>
+                {graph?.demo_mode
+                  ? "Add NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD to .env and run scripts/build_graph.py to build the knowledge graph."
+                  : "No entities found. Upload a document or click Build Graph to extract entities from your sources."}
+              </p>
+            )}
+            {!graph?.demo_mode && (
+              <button
+                onClick={handleBuildGraph}
+                disabled={building}
+                style={{
+                  padding: "10px 22px", borderRadius: 10, border: "none",
+                  background: building
+                    ? "var(--border)"
+                    : "linear-gradient(135deg, #6c63ff, #8b5cf6)",
+                  color: "#fff", fontSize: 13, fontWeight: 700, cursor: building ? "not-allowed" : "pointer",
+                  display: "flex", alignItems: "center", gap: 8,
+                  boxShadow: building ? "none" : "0 4px 14px rgba(108,99,255,0.3)",
+                  transition: "all 0.2s",
+                }}
+              >
+                {building ? (
+                  <><span className="spinner spinner-sm" style={{ borderTopColor: "#fff" }} /> Building…</>
+                ) : (
+                  <>⬡ Build Graph</>
+                )}
+              </button>
+            )}
+            {buildMessage && (
+              <p style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center", maxWidth: 400, marginTop: 4 }}>
+                {buildMessage}
+              </p>
+            )}
           </div>
         ) : (
           <div style={{ flex: 1, border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", background: "rgba(0,0,0,0.2)" }}>
@@ -135,7 +240,7 @@ export default function GraphExplorer({ notebookId }: { notebookId: string }) {
         {/* Legend */}
         {!isEmpty && (
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            {Object.entries(TYPE_COLORS).map(([type, color]) => (
+            {LEGEND_ENTRIES.map(([type, color]) => (
               <div key={type} style={{ display: "flex", alignItems: "center", gap: 5 }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
                 <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{type}</span>

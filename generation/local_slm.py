@@ -10,7 +10,7 @@ import re
 import json
 
 try:
-    from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer
+    from transformers import pipeline, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     import torch
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
@@ -41,10 +41,33 @@ class LocalSLM:
         dtype = torch.bfloat16 if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else torch.float16
         
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+        
+        model_kwargs = {
+            "torch_dtype": dtype,
+            "device_map": "auto",
+        }
+        
+        if torch.cuda.is_available():
+            try:
+                import bitsandbytes
+                model_kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=dtype,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4"
+                )
+            except ImportError:
+                print("[LocalSLM] bitsandbytes not installed, skipping 4-bit quantization.")
+                
+            try:
+                import flash_attn
+                model_kwargs["attn_implementation"] = "flash_attention_2"
+            except ImportError:
+                print("[LocalSLM] flash_attn not installed, skipping Flash Attention 2.")
+
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_id,
-            torch_dtype=dtype,
-            device_map="auto",
+            **model_kwargs
         )
 
         if adapter_path:
@@ -57,8 +80,9 @@ class LocalSLM:
             tokenizer=self.tokenizer,
             max_new_tokens=1024,
             do_sample=True,
-            temperature=0.3,
+            temperature=0.1,
             top_p=0.9,
+            repetition_penalty=1.15,
         )
 
     def generate(
@@ -118,7 +142,7 @@ class LocalSLM:
     def _run_inference(self, prompt: str, sources: List[Dict], mode: str) -> Dict[str, Any]:
         """Helper to run inference and parse citations."""
         messages = [
-            {"role": "system", "content": "You are a helpful, accurate research assistant. Follow the prompt instructions precisely."},
+            {"role": "system", "content": "You are a highly accurate research assistant. Answer the user's question based ONLY on the provided context. Always cite your sources using the [number] format. If the context does not contain the answer, say INSUFFICIENT_CONTEXT."},
             {"role": "user", "content": prompt}
         ]
         

@@ -97,7 +97,7 @@ Context Paragraphs per entry: 10
 
 ---
 
-### 🔄 Phase 4 — Knowledge Graph Construction (In Progress)
+### ✅ Phase 4 — Knowledge Graph Construction
 **Planned Commit:** `Phase 4: LLM-based entity/relationship extraction into Neo4j`
 
 - [x] [`graph_store/SCHEMA.md`](file:///c:/Users/Sudhanshu%20Singh/.gemini/antigravity-ide/scratch/graphrag-research-notebook/graph_store/SCHEMA.md) — Entity node & RELATION edge spec with Cypher MERGE contracts
@@ -106,52 +106,53 @@ Context Paragraphs per entry: 10
 - [x] [`graph_store/README.md`](file:///c:/Users/Sudhanshu%20Singh/.gemini/antigravity-ide/scratch/graphrag-research-notebook/graph_store/README.md) — rate-limit guidance (1 Gemini call/chunk, 10 RPM limit)
 - [x] [`scripts/build_graph.py`](file:///c:/Users/Sudhanshu%20Singh/.gemini/antigravity-ide/scratch/graphrag-research-notebook/scripts/build_graph.py) — parse → chunk → extract → Neo4j upsert pipeline
 - [x] [`scripts/query_graph.py`](file:///c:/Users/Sudhanshu%20Singh/.gemini/antigravity-ide/scratch/graphrag-research-notebook/scripts/query_graph.py) — entity neighbor sanity check
-- [ ] `tests/test_graph_extractor.py` — unit test with fixed sample chunks
-- [ ] Commit Phase 4
+- [x] `tests/test_graph_extractor.py` — unit test with fixed sample chunks
+- [x] Commit Phase 4
 
 ---
 
-### 🔄 Phase 5 — Hybrid Retrieval (In Progress)
+### ✅ Phase 5 — Hybrid Retrieval
 **Planned Commit:** `Phase 5: hybrid vector + graph retrieval with query routing`
 
 - [x] [`retrieval/vector_retriever.py`](file:///c:/Users/Sudhanshu%20Singh/.gemini/antigravity-ide/scratch/graphrag-research-notebook/retrieval/vector_retriever.py) — vector-only path
 - [x] [`retrieval/graph_retriever.py`](file:///c:/Users/Sudhanshu%20Singh/.gemini/antigravity-ide/scratch/graphrag-research-notebook/retrieval/graph_retriever.py) — 1-2 hop graph expansion from vector seed chunks
 - [x] [`retrieval/hybrid_reranker.py`](file:///c:/Users/Sudhanshu%20Singh/.gemini/antigravity-ide/scratch/graphrag-research-notebook/retrieval/hybrid_reranker.py) — weighted fusion scoring, dedup, 4000-token budget trim
 - [x] [`retrieval/router.py`](file:///c:/Users/Sudhanshu%20Singh/.gemini/antigravity-ide/scratch/graphrag-research-notebook/retrieval/router.py) — heuristic keyword router with JSONL analytics logging
-- [ ] `scripts/test_retrieval.py` — side-by-side vector vs hybrid comparison
-- [ ] `retrieval/README.md` — routing heuristic documentation
-- [ ] Commit Phase 5
+- [x] `scripts/test_retrieval.py` — side-by-side vector vs hybrid comparison
+- [x] `retrieval/README.md` — routing heuristic documentation
+- [x] Commit Phase 5
 
 ---
 
-### ⚪ Phase 6 — Cited Answer Generation
-- [ ] `generation/prompts.py` — Gemini grounded prompt with `[1]`, `[2]` citation markers
-- [ ] `generation/generator.py` — citation-to-source mapping, "insufficient context" fallback
-- [ ] `scripts/test_generation.py` — end-to-end query → citations test
-- [ ] `generation/README.md`
+### ✅ Phase 6 — Cited Answer Generation
+**Commit:** `Phase 6: Cited Answer Generation`
+- [x] `generation/prompts.py` — Gemini grounded prompt with `[1]`, `[2]` citation markers
+- [x] `generation/generator.py` — citation-to-source mapping, "insufficient context" fallback
+- [x] `scripts/test_generation.py` — end-to-end query → citations test
+- [x] `generation/README.md`
 
 ---
 
-### ⚪ Phase 7 — FastAPI Backend
-- [ ] `api/main.py` — POST `/notebooks`, `/documents`, GET `/status`, POST `/chat`, GET `/graph`, GET `/sources`
-- [ ] BackgroundTasks for document processing (ingestion + embedding + graph build)
-- [ ] Pydantic request/response schemas, CORS, error handling
-- [ ] `tests/test_api.py` — integration tests with `TestClient`
-- [ ] `api/README.md` with curl examples
+### ✅ Phase 7 — FastAPI Backend
+- [x] `api/main.py` — POST `/notebooks`, `/documents`, GET `/status`, POST `/chat`, GET `/graph`, GET `/sources`
+- [x] BackgroundTasks for document processing (ingestion + embedding + graph build)
+- [x] Pydantic request/response schemas, CORS, error handling
+- [x] `tests/test_api.py` — integration tests with `TestClient`
+- [x] `api/README.md` with curl examples
 
 ---
 
-### ⚪ Phase 8 — Next.js Frontend
-- [ ] `frontend/` — Next.js app scaffold
-- [ ] 3-panel UI: Source List, Chat (clickable citations), Graph Explorer (`react-force-graph`)
-- [ ] Real-time document processing polling
-- [ ] `frontend/README.md`
+### ✅ Phase 8 — Next.js Frontend
+- [x] `frontend/` — Next.js app scaffold
+- [x] 3-panel UI: Source List, Chat (clickable citations), Graph Explorer (`react-force-graph`)
+- [x] Real-time document processing polling
+- [x] `frontend/README.md`
 
 ---
 
-### ⚪ Phase 9 — Novelty Features
+### 🔄 Phase 9 — Novelty Features (In Progress)
 - [ ] **9A** — User graph correction loop (flag entity → Supabase → negative prompt re-extraction)
-- [ ] **9B** — Routing analytics summary script (`routing_log.jsonl` already being populated)
+- [x] **9B** — Routing analytics summary script (`routing_log.jsonl` already being populated)
 - [ ] **9C** — `edge-tts` two-speaker audio overview generation
 - [ ] `NOVELTY.md`
 
