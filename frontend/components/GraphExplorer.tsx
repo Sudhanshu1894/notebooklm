@@ -29,20 +29,20 @@ export default function GraphExplorer({ notebookId }: { notebookId: string }) {
     try {
       const res = await api.buildGraph(notebookId);
       setBuildMessage(`Building graph from ${res.documents} document(s)… This may take a minute.`);
-      // Poll for completion — reload graph every 5s for up to 2 minutes
+      // Poll for completion — reload graph every 5s for up to 5 minutes
       let attempts = 0;
       const poll = setInterval(async () => {
         attempts++;
         try {
           const g = await api.getGraph(notebookId);
-          if (g.nodes.length > 0 || attempts >= 24) {
+          if (g.nodes.length > 0 || attempts >= 60) {
             clearInterval(poll);
             setGraph(g);
             setBuilding(false);
             setBuildMessage(g.nodes.length > 0 ? "" : "Graph building may still be in progress. Click Refresh to check.");
           }
         } catch {
-          if (attempts >= 24) {
+          if (attempts >= 60) {
             clearInterval(poll);
             setBuilding(false);
             setBuildMessage("Graph building may still be in progress. Click Refresh to check.");

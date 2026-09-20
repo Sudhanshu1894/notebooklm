@@ -167,6 +167,55 @@ def build_quiz_prompt(context_chunks: List[Dict[str, Any]], topic: str = "") -> 
     return prompt
 
 
+def build_ollama_tutor_prompt(query: str, context_chunks: List[Dict[str, Any]]) -> Tuple[str, List[Dict]]:
+    """Builds a grouped, formatted context prompt for the local Ollama fallback."""
+    sources = []
+    
+    # Sort chunks by doc_id and section_header to group related information together
+    sorted_chunks = sorted(
+        context_chunks, 
+        key=lambda c: (
+            c.get("metadata", {}).get("doc_id", ""), 
+            c.get("metadata", {}).get("section_header", "")
+        )
+    )
+    
+    context_parts = []
+    for i, chunk in enumerate(sorted_chunks, start=1):
+        meta = chunk.get("metadata", {})
+        doc_id = meta.get("doc_id", "unknown")
+        page_num = meta.get("page_number", "?")
+        section = meta.get("section_header", "")
+        text = chunk.get("text", "").strip()
+        
+        # Build the exact context format requested
+        block = f"[{i}]\nDOCUMENT:\n{doc_id}\n\n"
+        if section:
+            block += f"RELEVANT TOPIC:\n{section}\n\n"
+        block += f"CONTENT:\n{text}\n\n"
+        block += f"SOURCE INFORMATION:\n{doc_id} — Page {page_num}"
+        
+        context_parts.append(block)
+        
+        # We store sources in order of citation_number to keep frontend compatibility
+        sources.append({
+            "citation_number": i,
+            "chunk_id": chunk.get("chunk_id", ""),
+            "doc_id": doc_id,
+            "page_number": page_num,
+            "section_header": section,
+            "text_preview": text[:150],
+        })
+        
+    context_block = "\n\n==================================================\n\n".join(context_parts)
+    prompt = (
+        f"<retrieved_context>\n{context_block}\n</retrieved_context>\n\n"
+        f"USER QUESTION: {query}"
+    )
+    
+    return prompt, sources
+
+
 # ---------------------------------------------------------------------------
 # Main generator class
 # ---------------------------------------------------------------------------

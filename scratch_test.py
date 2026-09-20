@@ -1,27 +1,44 @@
 import os
-from google import genai
-from google.genai import types
+import sys
 
-def test():
-    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+# Fix unicode printing in Windows CMD
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding='utf-8')
+
+from generation.ollama_slm import OllamaSLM
+
+def main():
+    slm = OllamaSLM(model_id="llama3.2")
     
-    # Test Google Search Grounding
-    print("Testing Google Search...")
-    try:
-        response = client.models.generate_content(
-            model="gemini-1.5-flash", 
-            contents="Who won the super bowl in 2024?",
-            config=types.GenerateContentConfig(
-                tools=[{"google_search": {}}]
-            )
-        )
-        print("Response:", response.text)
-        if getattr(response, "candidates", None) and response.candidates[0].grounding_metadata:
-            print("Grounding Meta:", response.candidates[0].grounding_metadata)
-    except Exception as e:
-        print("Error:", e)
+    # Simulate retrieved context
+    chunks = [
+        {
+            "chunk_id": "chunk_1",
+            "metadata": {"doc_id": "ML_Notes.pdf", "page_number": "12", "section_header": "Optimization"},
+            "text": "Gradient descent is a first-order iterative optimization algorithm for finding a local minimum of a differentiable function. The idea is to take repeated steps in the opposite direction of the gradient (or approximate gradient) of the function at the current point, because this is the direction of steepest descent."
+        },
+        {
+            "chunk_id": "chunk_2",
+            "metadata": {"doc_id": "ML_Notes.pdf", "page_number": "13", "section_header": "Learning Rate"},
+            "text": "The learning rate is a tuning parameter in an optimization algorithm that determines the step size at each iteration while moving toward a minimum of a loss function. If the learning rate is too large, the algorithm may overshoot the minimum and diverge. If it is too small, convergence will be very slow."
+        }
+    ]
     
+    queries = [
+        "What is gradient descent?",
+        "Why do we need a learning rate?",
+        "What happens if it is too large?",
+        "I don't understand this, can you explain what a learning rate is using a very simple analogy?",
+        "What is the difference between gradient descent and linear regression?", # Linear regression is not in context
+    ]
+    
+    print("================== OLLAMA TUTOR TESTS ==================")
+    for q in queries:
+        print(f"\n[USER]: {q}")
+        response = slm.generate(q, chunks)
+        print(f"[TUTOR]:\n{response['answer_text']}")
+        print(f"\n[CITATIONS DETECTED]: {[c['citation_number'] for c in response.get('citations', [])]}")
+        print("-" * 50)
+
 if __name__ == "__main__":
-    from dotenv import load_dotenv
-    load_dotenv()
-    test()
+    main()

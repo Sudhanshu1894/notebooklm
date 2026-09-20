@@ -68,7 +68,7 @@ def format_dataset(dataset_path: str) -> Dataset:
 
 def main():
     parser = argparse.ArgumentParser(description="Fine-tune Local SLM using QLoRA")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-0.5B-Instruct", help="Base model ID")
+    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-1.5B-Instruct", help="Base model ID")
     parser.add_argument("--dataset", type=str, default="data/sample_hotpotqa.json", help="Path to sample dataset")
     parser.add_argument("--output_dir", type=str, default="models/qwen-hotpotqa-lora", help="Output directory")
     parser.add_argument("--epochs", type=int, default=1, help="Number of training epochs")
