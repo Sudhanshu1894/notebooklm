@@ -239,4 +239,10 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
+
+  async getQuizMastery(notebookId: string): Promise<{ stats: any[] }> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/quiz/mastery`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
 };

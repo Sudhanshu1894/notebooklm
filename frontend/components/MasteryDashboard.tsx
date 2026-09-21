@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Brain, AlertCircle, Target, TrendingUp } from "lucide-react";
@@ -24,8 +24,7 @@ export default function MasteryDashboard({ notebookId }: { notebookId: string })
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`http://localhost:8000/notebooks/${notebookId}/quiz/mastery`)
-      .then(r => r.json())
+    api.getQuizMastery(notebookId)
       .then(d => { setStats(d.stats || []); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
   }, [notebookId]);

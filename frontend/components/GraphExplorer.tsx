@@ -17,9 +17,7 @@ export default function GraphExplorer({ notebookId }: { notebookId: string }) {
     setLoading(true);
     Promise.all([
       api.getGraph(notebookId),
-      fetch(`http://127.0.0.1:8000/notebooks/${notebookId}/quiz/mastery`)
-        .then(res => res.json())
-        .catch(() => ({ stats: [] }))
+      api.getQuizMastery(notebookId).catch(() => ({ stats: [] }))
     ])
       .then(([g, m]) => {
         setGraph(g);
