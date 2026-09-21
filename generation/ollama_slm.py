@@ -19,8 +19,9 @@ class OllamaSLM:
 
     DEFAULT_MODEL = "llama3.2" # Using a more capable model for teaching
 
-    def __init__(self, model_id: Optional[str] = None, host: str = "http://localhost:11434", notebook_id: Optional[str] = None):
-        self.host = host.rstrip("/")
+    def __init__(self, model_id: Optional[str] = None, host: Optional[str] = None, notebook_id: Optional[str] = None):
+        default_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        self.host = (host or default_host).rstrip("/")
         self.notebook_id = notebook_id
 
         if model_id:

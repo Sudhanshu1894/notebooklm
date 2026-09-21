@@ -178,8 +178,9 @@ class OllamaTrainer:
 
     BASE_MODEL = "qwen2.5:0.5b"
 
-    def __init__(self, ollama_host: str = "http://localhost:11434"):
-        self.ollama_host = ollama_host.rstrip("/")
+    def __init__(self, ollama_host: Optional[str] = None):
+        default_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        self.ollama_host = (ollama_host or default_host).rstrip("/")
         self.registry = DocumentRegistry()
         self.extractor = KnowledgeExtractor()
 
