@@ -6,8 +6,8 @@ import { AuthProvider } from "@/components/AuthContext";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "GraphRAG Notebook",
-  description: "Hybrid Graph + Vector RAG Research System with Citation Grounding",
+  title: "Lumina – AI Knowledge Assistant",
+  description: "Illuminate your documents with AI-powered knowledge, quizzes, and insights.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

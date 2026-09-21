@@ -233,22 +233,35 @@ export default function Home() {
   const [deleteTarget, setDeleteTarget] = useState<Notebook | null>(null);
 
   const loadNotebooks = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      const list = await api.listNotebooks();
+      const list = await api.listNotebooks(user.id);
       setNotebooks(list);
+      // Also update active notebook so header title refreshes
+      setActiveNotebook((prev) => {
+        if (!prev) return null;
+        const updated = list.find((nb) => nb.notebook_id === prev.notebook_id);
+        return updated || null;
+      });
     } catch {}
     setLoading(false);
-  }, []);
+  }, [user]);
 
+  // Reset active state when user changes (login, logout, switch user)
   useEffect(() => {
-    if (user) loadNotebooks();
-  }, [user, loadNotebooks]);
+    setActiveNotebook(null);
+    setNotebooks([]);
+    if (user) {
+      loadNotebooks();
+    }
+  }, [user?.id, loadNotebooks]);
 
   async function handleCreateNew() {
+    if (!user) return;
     try {
       const name = `New Chat`;
-      const res = await api.createNotebook(name);
+      const res = await api.createNotebook(name, user.id);
       const nb: Notebook = {
         notebook_id: res.notebook_id,
         name,
@@ -261,6 +274,12 @@ export default function Home() {
     } catch (e) {
       console.error(e);
     }
+  }
+
+  async function handleSignOut() {
+    setActiveNotebook(null);
+    setNotebooks([]);
+    await signOut();
   }
 
   async function handleRename(notebookId: string, newName: string) {
@@ -341,13 +360,17 @@ export default function Home() {
         <div style={{ padding: "18px 16px 10px", borderBottom: "1px solid var(--sidebar-border)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
             <div style={{
-              width: 32, height: 32, borderRadius: 8,
-              background: "linear-gradient(135deg, #b5704a, #c97d50)",
+              width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+              background: "linear-gradient(135deg, #6366f1 0%, #a855f7 60%, #ec4899 100%)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 16, flexShrink: 0
-            }}>⬡</div>
-            <span style={{ color: "var(--sidebar-text)", fontWeight: 700, fontSize: 15, whiteSpace: "nowrap" }}>
-              Research AI
+              boxShadow: "0 2px 10px rgba(99,102,241,0.5)",
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.95"/>
+              </svg>
+            </div>
+            <span style={{ color: "var(--sidebar-text)", fontWeight: 800, fontSize: 16, whiteSpace: "nowrap", letterSpacing: "-0.3px" }}>
+              Lumina
             </span>
           </div>
           <button
@@ -466,7 +489,7 @@ export default function Home() {
               {user.email}
             </span>
             <button
-              onClick={signOut}
+              onClick={handleSignOut}
               title="Log out"
               style={{
                 background: "none", border: "none", cursor: "pointer",
@@ -511,12 +534,16 @@ export default function Home() {
             alignItems: "center", justifyContent: "center", padding: "2rem"
           }}>
             <div style={{
-              width: 60, height: 60, borderRadius: 16,
-              background: "linear-gradient(135deg, #b5704a, #c97d50)",
+              width: 56, height: 56, borderRadius: 16,
+              background: "linear-gradient(135deg, #6366f1 0%, #a855f7 60%, #ec4899 100%)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 28, marginBottom: 24,
-              boxShadow: "0 8px 32px rgba(181,112,74,0.3)"
-            }}>⬡</div>
+              marginBottom: 24,
+              boxShadow: "0 8px 32px rgba(99,102,241,0.35)"
+            }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.95"/>
+              </svg>
+            </div>
             <h1
               style={{ fontSize: "1.85rem", fontWeight: 700, marginBottom: "0.75rem" }}
               className="gradient-text"

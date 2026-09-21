@@ -7,7 +7,7 @@ import os
 import uuid
 import sys
 from typing import Dict, Any, List, Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import shutil
@@ -91,18 +91,46 @@ class ChatResponse(BaseModel):
 class QuizRequest(BaseModel):
     topic: Optional[str] = ""
     top_k: Optional[int] = 20
+    focus_topics: Optional[List[str]] = None
 
 class QuizQuestion(BaseModel):
+    type: Optional[str] = "mcq" # mcq, fill_in_blank, short_answer
     question: str
-    options: List[str]
-    correct_index: int
+    options: Optional[List[str]] = None
+    correct_index: Optional[int] = None
+    correct_answer: Optional[str] = None
+    grading_rubric: Optional[str] = None
     explanation: str
     source_hint: Optional[str] = ""
     difficulty: Optional[str] = "medium"
+    topic: Optional[str] = "general"
 
 class QuizResponse(BaseModel):
     questions: List[QuizQuestion]
     error: Optional[str] = None
+
+class QuizResultRequest(BaseModel):
+    topic: str
+    is_correct: bool
+
+class MasteryStat(BaseModel):
+    topic: str
+    total_attempts: int
+    correct_attempts: int
+    mastery_percentage: float
+
+class MasteryResponse(BaseModel):
+    notebook_id: str
+    stats: List[MasteryStat]
+
+class GradeRequest(BaseModel):
+    question: str
+    user_answer: str
+    grading_rubric: str
+
+class GradeResponse(BaseModel):
+    is_correct: bool
+    feedback: str
 
 class HealthResponse(BaseModel):
     status: str
@@ -188,17 +216,19 @@ def health_check():
 
 
 @app.post("/notebooks", response_model=NotebookResponse)
-def create_notebook(body: NotebookCreate):
+def create_notebook(body: NotebookCreate, x_user_id: Optional[str] = Header(default="anonymous")):
     """Creates a new notebook in SQLite database and returns its ID."""
     notebook_id = str(uuid.uuid4())[:8]
-    nb = doc_registry.create_notebook(notebook_id, body.name, body.description or "")
+    user_id = x_user_id or "anonymous"
+    nb = doc_registry.create_notebook(notebook_id, body.name, body.description or "", user_id=user_id)
     return NotebookResponse(notebook_id=nb["notebook_id"], name=nb["name"], description=nb["description"])
 
 
 @app.get("/notebooks")
-def list_notebooks():
-    """Lists all notebooks."""
-    return doc_registry.list_notebooks()
+def list_notebooks(x_user_id: Optional[str] = Header(default="anonymous")):
+    """Lists notebooks belonging to the authenticated user."""
+    user_id = x_user_id or "anonymous"
+    return doc_registry.list_notebooks(user_id=user_id)
 
 @app.delete("/notebooks/{notebook_id}")
 def delete_notebook(notebook_id: str):
@@ -237,6 +267,13 @@ async def upload_document(
     nb = doc_registry.get_notebook(notebook_id)
     if not nb:
         doc_registry.create_notebook(notebook_id, f"Notebook {notebook_id}")
+    else:
+        # Automatically rename 'New Chat' to the document's name
+        if nb.get("name") == "New Chat":
+            new_name = os.path.splitext(file.filename)[0].replace("_", " ").replace("-", " ")
+            # Capitalize each word for a better title
+            new_name = " ".join(word.capitalize() for word in new_name.split())
+            doc_registry.update_notebook_name(notebook_id, new_name)
 
     doc_id = str(uuid.uuid4())[:8]
     save_path = os.path.join(UPLOAD_DIR, f"{doc_id}_{file.filename}")
@@ -426,9 +463,13 @@ def chat(notebook_id: str, body: ChatRequest):
 def generate_quiz(notebook_id: str, body: QuizRequest):
     """Generate a 5-question MCQ quiz from the notebook's documents."""
     try:
+        topic_str = body.topic or "key concepts definitions important"
+        if body.focus_topics:
+            topic_str = " ".join(body.focus_topics)
+
         vector_retriever = VectorRetriever()
         context_chunks = vector_retriever.retrieve(
-            body.topic or "key concepts definitions important",
+            topic_str,
             notebook_id=notebook_id,
             top_k=body.top_k or 20,
         )
@@ -444,12 +485,16 @@ def generate_quiz(notebook_id: str, body: QuizRequest):
                 if "error" not in raw:
                     questions = [
                         QuizQuestion(
+                            type=q.get("type", "mcq"),
                             question=q["question"],
-                            options=q["options"],
-                            correct_index=q["correct_index"],
+                            options=q.get("options"),
+                            correct_index=q.get("correct_index"),
+                            correct_answer=q.get("correct_answer"),
+                            grading_rubric=q.get("grading_rubric"),
                             explanation=q["explanation"],
                             source_hint=q.get("source_hint", ""),
                             difficulty=q.get("difficulty", "medium"),
+                            topic=q.get("topic", "general"),
                         )
                         for q in raw.get("questions", [])
                     ]
@@ -465,12 +510,16 @@ def generate_quiz(notebook_id: str, body: QuizRequest):
             return QuizResponse(questions=[], error=raw["error"])
         questions = [
             QuizQuestion(
+                type=q.get("type", "mcq"),
                 question=q["question"],
-                options=q["options"],
-                correct_index=q["correct_index"],
+                options=q.get("options"),
+                correct_index=q.get("correct_index"),
+                correct_answer=q.get("correct_answer"),
+                grading_rubric=q.get("grading_rubric"),
                 explanation=q["explanation"],
                 source_hint=q.get("source_hint", ""),
                 difficulty=q.get("difficulty", "medium"),
+                topic=q.get("topic", "general"),
             )
             for q in raw.get("questions", [])
         ]
@@ -478,6 +527,48 @@ def generate_quiz(notebook_id: str, body: QuizRequest):
     except Exception as e:
         print(f"[quiz error]: {e}")
         return QuizResponse(questions=[], error=f"Quiz generation failed: {str(e)}")
+
+
+@app.post("/notebooks/{notebook_id}/quiz/results")
+def record_quiz_result(notebook_id: str, body: QuizResultRequest):
+    """Records a user's answer outcome for a specific topic."""
+    doc_registry.save_quiz_result(notebook_id, body.topic, body.is_correct)
+    return {"status": "success"}
+
+
+@app.get("/notebooks/{notebook_id}/quiz/mastery", response_model=MasteryResponse)
+def get_quiz_mastery(notebook_id: str):
+    """Returns aggregated mastery statistics per topic for a notebook."""
+    stats = doc_registry.get_mastery_stats(notebook_id)
+    return MasteryResponse(notebook_id=notebook_id, stats=stats)
+
+
+@app.post("/notebooks/{notebook_id}/quiz/grade", response_model=GradeResponse)
+def grade_short_answer(notebook_id: str, body: GradeRequest):
+    """Uses LLM to grade a short answer based on a rubric."""
+    try:
+        from generation.generator import AnswerGenerator
+        generator = AnswerGenerator()
+        prompt = (
+            "You are an expert teacher grading a short answer.\n"
+            f"Question: {body.question}\n"
+            f"Student Answer: {body.user_answer}\n"
+            f"Rubric/Requirements: {body.grading_rubric}\n\n"
+            "Assess if the student's answer captures the required concepts.\n"
+            "Respond in JSON format exactly like this:\n"
+            '{\n  "is_correct": true/false,\n  "feedback": "1-2 short sentences of constructive feedback"\n}'
+        )
+        response_text, _ = generator.generate_answer(prompt, notebook_id=notebook_id)
+        # Parse JSON
+        import json
+        import re
+        match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if match:
+            res = json.loads(match.group(0))
+            return GradeResponse(is_correct=res.get("is_correct", False), feedback=res.get("feedback", "No feedback provided."))
+        return GradeResponse(is_correct=False, feedback="Failed to parse grading response.")
+    except Exception as e:
+        return GradeResponse(is_correct=False, feedback=f"Error grading answer: {str(e)}")
 
 
 @app.get("/notebooks/{notebook_id}/graph")

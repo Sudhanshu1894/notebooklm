@@ -137,29 +137,48 @@ def build_teaching_prompt(query: str, context_chunks: List[Dict[str, Any]]) -> T
 
 
 def build_quiz_prompt(context_chunks: List[Dict[str, Any]], topic: str = "") -> str:
-    """Generates a prompt for structured MCQ quiz output."""
+    """Generates a prompt for structured quiz output with mixed question types."""
     context_block, _ = _build_source_block(context_chunks)
     topic_line = f"Focus on: {topic}" if topic else "Cover the most important concepts from the sources."
     prompt = (
         "You are an expert educator creating a quiz to test understanding of study material.\n"
-        f"Based ONLY on the source documents below, generate exactly 5 multiple-choice questions.\n"
+        f"Based ONLY on the source documents below, generate exactly 5 questions.\n"
         f"{topic_line}\n\n"
         "STRICT OUTPUT FORMAT -- respond with ONLY valid JSON, no markdown fences, no extra text:\n"
         '{\n'
         '  "questions": [\n'
         '    {\n'
+        '      "type": "mcq",\n'
         '      "question": "Clear question text here?",\n'
         '      "options": ["Option A", "Option B", "Option C", "Option D"],\n'
         '      "correct_index": 0,\n'
         '      "explanation": "Brief explanation citing the source.",\n'
-        '      "source_hint": "doc_id or section name"\n'
+        '      "source_hint": "doc_id or section name",\n'
+        '      "topic": "The specific entity, concept, or term being tested (1-3 words)"\n'
+        '    },\n'
+        '    {\n'
+        '      "type": "fill_in_blank",\n'
+        '      "question": "The main component is the ______.",\n'
+        '      "correct_answer": "nucleus",\n'
+        '      "explanation": "Brief explanation citing the source.",\n'
+        '      "source_hint": "doc_id or section name",\n'
+        '      "topic": "The specific entity or concept being tested"\n'
+        '    },\n'
+        '    {\n'
+        '      "type": "short_answer",\n'
+        '      "question": "Explain the significance of X in 1-2 sentences.",\n'
+        '      "grading_rubric": "Keywords or concepts the answer must include to be considered correct.",\n'
+        '      "explanation": "Full exemplary answer.",\n'
+        '      "source_hint": "doc_id or section name",\n'
+        '      "topic": "The specific entity or concept being tested"\n'
         '    }\n'
         '  ]\n'
         '}\n\n'
         "Rules:\n"
-        "- Each question must have exactly 4 options.\n"
-        "- correct_index is 0-based (0=A, 1=B, 2=C, 3=D).\n"
-        "- Questions should test understanding, not just memorisation.\n"
+        "- Generate a mix of 'mcq', 'fill_in_blank', and 'short_answer' questions.\n"
+        "- For 'mcq', there must be exactly 4 options and correct_index must be 0-3.\n"
+        "- For 'fill_in_blank', use ______ (6 underscores) in the question where the answer goes.\n"
+        "- Questions should test deep understanding, not just memorisation.\n"
         "- Vary difficulty: 2 easy, 2 medium, 1 hard.\n"
         "- Do NOT include questions about information not in the sources.\n\n"
         f"CONTEXT SOURCES:\n{context_block}\n\nJSON OUTPUT:"

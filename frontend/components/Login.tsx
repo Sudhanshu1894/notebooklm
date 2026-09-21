@@ -44,14 +44,16 @@ export default function Login() {
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
       <div className="glass" style={{ padding: "2.5rem", width: "100%", maxWidth: 400 }}>
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
-          <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 48, height: 48, borderRadius: "14px", background: "var(--accent)", color: "white", fontSize: 24, marginBottom: "1rem" }}>
-            ⬡
+          <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 52, height: 52, borderRadius: "14px", background: "linear-gradient(135deg, #6366f1 0%, #a855f7 60%, #ec4899 100%)", marginBottom: "1rem", boxShadow: "0 4px 20px rgba(99,102,241,0.4)" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white"/>
+            </svg>
           </div>
-          <h2 style={{ fontSize: "1.5rem", fontWeight: 700 }}>
-            {mode === "reset" ? "Reset Password" : "Welcome to GraphRAG"}
+          <h2 style={{ fontSize: "1.6rem", fontWeight: 800, letterSpacing: "-0.5px" }}>
+            {mode === "reset" ? "Reset Password" : "Welcome to Lumina"}
           </h2>
           <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem", marginTop: "0.5rem" }}>
-            {mode === "reset" ? "Enter your email to receive a reset link" : "Log in to continue your research"}
+            {mode === "reset" ? "Enter your email to receive a reset link" : "Illuminate your knowledge with AI"}
           </p>
         </div>
         

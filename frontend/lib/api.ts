@@ -46,12 +46,16 @@ export interface GraphData {
 }
 
 export interface QuizQuestion {
+  type?: "mcq" | "fill_in_blank" | "short_answer";
   question: string;
-  options: string[];
-  correct_index: number;
+  options?: string[];
+  correct_index?: number;
+  correct_answer?: string;
+  grading_rubric?: string;
   explanation: string;
   source_hint?: string;
   difficulty?: "easy" | "medium" | "hard";
+  topic?: string;
 }
 
 export interface QuizResponse {
@@ -80,10 +84,10 @@ export interface KnowledgeStats {
 
 export const api = {
 
-  async createNotebook(name: string = "New Research"): Promise<{ notebook_id: string }> {
+  async createNotebook(name: string = "New Research", userId: string = "anonymous"): Promise<{ notebook_id: string }> {
     const res = await fetch(`${API_BASE}/notebooks`, { 
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-User-Id": userId },
       body: JSON.stringify({ name, description: "" })
     });
     if (!res.ok) throw new Error(await res.text());
@@ -114,8 +118,10 @@ export const api = {
     if (!res.ok) throw new Error(await res.text());
   },
 
-  async listNotebooks(): Promise<Notebook[]> {
-    const res = await fetch(`${API_BASE}/notebooks`);
+  async listNotebooks(userId: string = "anonymous"): Promise<Notebook[]> {
+    const res = await fetch(`${API_BASE}/notebooks`, {
+      headers: { "X-User-Id": userId }
+    });
     if (!res.ok) throw new Error(await res.text());
     return res.json();
   },
@@ -160,11 +166,34 @@ export const api = {
     return res.json();
   },
 
-  async generateQuiz(notebookId: string, topic = "", topK = 20): Promise<QuizResponse> {
+  async generateQuiz(notebookId: string, topic = "", topK = 20, focusTopics?: string[]): Promise<QuizResponse> {
+    const body: any = { topic, top_k: topK };
+    if (focusTopics && focusTopics.length > 0) {
+      body.focus_topics = focusTopics;
+    }
     const res = await fetch(`${API_BASE}/notebooks/${notebookId}/quiz`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic, top_k: topK }),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+
+  async recordQuizResult(notebookId: string, topic: string, isCorrect: boolean): Promise<void> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/quiz/results`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic, is_correct: isCorrect }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+  },
+
+  async gradeShortAnswer(notebookId: string, question: string, userAnswer: string, gradingRubric: string): Promise<{is_correct: boolean, feedback: string}> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/quiz/grade`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, user_answer: userAnswer, grading_rubric: gradingRubric }),
     });
     if (!res.ok) throw new Error(await res.text());
     return res.json();

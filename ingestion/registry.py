@@ -102,6 +102,19 @@ class DocumentRegistry:
                 """
             )
 
+            # Quiz Mastery table - tracks user performance on quiz topics
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS quiz_mastery (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    notebook_id TEXT NOT NULL,
+                    topic TEXT NOT NULL,
+                    is_correct INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
+
             conn.commit()
 
     # ── Notebook Methods ──────────────────────────────────────────────────────
@@ -374,3 +387,42 @@ class DocumentRegistry:
                     (notebook_id,),
                 )
             conn.commit()
+
+    # ── Quiz Mastery Methods ──────────────────────────────────────────────────
+
+    def save_quiz_result(self, notebook_id: str, topic: str, is_correct: bool):
+        """Saves a user's answer outcome for a specific topic."""
+        now = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO quiz_mastery (notebook_id, topic, is_correct, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (notebook_id, topic, int(is_correct), now),
+            )
+            conn.commit()
+
+    def get_mastery_stats(self, notebook_id: str) -> List[Dict[str, Any]]:
+        """Returns aggregated mastery statistics per topic for a notebook."""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT 
+                    topic, 
+                    COUNT(*) as total_attempts, 
+                    SUM(is_correct) as correct_attempts
+                FROM quiz_mastery 
+                WHERE notebook_id = ? 
+                GROUP BY topic
+                ORDER BY total_attempts DESC
+                """,
+                (notebook_id,)
+            )
+            stats = []
+            for row in cursor.fetchall():
+                topic_stat = dict(row)
+                topic_stat["mastery_percentage"] = (topic_stat["correct_attempts"] / topic_stat["total_attempts"]) * 100
+                stats.append(topic_stat)
+            return stats
+

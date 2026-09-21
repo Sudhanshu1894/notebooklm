@@ -90,4 +90,7 @@ class HybridReranker:
             trimmed.append(chunk)
             total_chars += chunk_len
 
+        print(f"\n[HybridReranker] Merged {len(vector_chunks)} vector + {len(graph_chunks)} graph chunks.")
+        print(f"[HybridReranker] Final fused context: {len(trimmed)} chunks ({total_chars} chars) within {self.char_budget} budget.\n")
+
         return trimmed

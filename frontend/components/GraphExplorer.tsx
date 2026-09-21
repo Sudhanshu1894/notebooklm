@@ -9,12 +9,26 @@ export default function GraphExplorer({ notebookId }: { notebookId: string }) {
   const [search, setSearch] = useState("");
   const [building, setBuilding] = useState(false);
   const [buildMessage, setBuildMessage] = useState("");
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [mastery, setMastery] = useState<Record<string, number>>({});
   const svgRef = useRef<SVGSVGElement>(null);
 
   const loadGraph = useCallback(() => {
     setLoading(true);
-    api.getGraph(notebookId)
-      .then(setGraph)
+    Promise.all([
+      api.getGraph(notebookId),
+      fetch(`http://127.0.0.1:8000/notebooks/${notebookId}/quiz/mastery`)
+        .then(res => res.json())
+        .catch(() => ({ stats: [] }))
+    ])
+      .then(([g, m]) => {
+        setGraph(g);
+        const masteryMap: Record<string, number> = {};
+        m.stats?.forEach((s: any) => {
+          masteryMap[s.topic.toLowerCase()] = s.mastery_percentage;
+        });
+        setMastery(masteryMap);
+      })
       .catch(() => setGraph({ nodes: [], edges: [], demo_mode: true }))
       .finally(() => setLoading(false));
   }, [notebookId]);
@@ -128,6 +142,18 @@ export default function GraphExplorer({ notebookId }: { notebookId: string }) {
           >
             ↻ Refresh
           </button>
+          <button
+            onClick={() => setShowHeatmap(!showHeatmap)}
+            style={{
+              background: showHeatmap ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "var(--bg-panel)",
+              border: showHeatmap ? "none" : "1px solid var(--border)", borderRadius: 6,
+              padding: "4px 10px", cursor: "pointer", fontSize: 11, fontWeight: 600,
+              color: showHeatmap ? "#fff" : "var(--text-dim)", display: "flex", alignItems: "center", gap: 5,
+              transition: "all 0.18s",
+            }}
+          >
+            🔥 Heatmap
+          </button>
           <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter entities..." style={{ marginLeft: "auto", width: 200 }} />
         </div>
 
@@ -213,14 +239,28 @@ export default function GraphExplorer({ notebookId }: { notebookId: string }) {
               {/* Nodes */}
               {filteredNodes.map((node) => {
                 const pos = positions[node.id];
-                const color = TYPE_COLORS[node.type] || "#888";
+                const baseColor = TYPE_COLORS[node.type] || "#888";
+                let color = baseColor;
+                let strokeColor = selected?.id === node.id ? "white" : baseColor;
+                
+                if (showHeatmap) {
+                  const mScore = mastery[node.name.toLowerCase()];
+                  if (mScore !== undefined) {
+                    color = mScore >= 80 ? "#27ae60" : mScore < 60 ? "#e74c3c" : "#f59e0b";
+                    strokeColor = selected?.id === node.id ? "white" : color;
+                  } else {
+                    color = "rgba(128,128,128,0.2)";
+                    strokeColor = "rgba(128,128,128,0.3)";
+                  }
+                }
+                
                 const isSelected = selected?.id === node.id;
                 return (
                   <g key={node.id} style={{ cursor: "pointer" }} onClick={() => setSelected(isSelected ? null : node)}>
                     <circle
                       cx={pos.x} cy={pos.y} r={isSelected ? 20 : 14}
-                      fill={color} fillOpacity={isSelected ? 1 : 0.7}
-                      stroke={isSelected ? "white" : color}
+                      fill={color} fillOpacity={isSelected ? 1 : showHeatmap ? 0.9 : 0.7}
+                      stroke={strokeColor}
                       strokeWidth={isSelected ? 2 : 1}
                       style={{ filter: isSelected ? `drop-shadow(0 0 8px ${color})` : "none", transition: "all 0.2s" }}
                     />

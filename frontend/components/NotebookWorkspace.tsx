@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Notebook, Document, ChatResponse, Citation, api } from "@/lib/api";
-import GraphExplorer from "./GraphExplorer";
 import TeachingMessage from "./TeachingMessage";
 import QuizMode from "./QuizMode";
 import KnowledgeExplorer from "./KnowledgeExplorer";
@@ -95,6 +94,23 @@ function DocIcon({ filename }: { filename: string }) {
   return <File {...props} color="var(--text-dim)" />;
 }
 
+// ── Lumina Avatar ────────────────────────────────────────────────
+function LuminaAvatar({ size = 32 }: { size?: number }) {
+  const iconSize = Math.round(size * 0.55);
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: size > 40 ? 14 : 8, flexShrink: 0,
+      background: "linear-gradient(135deg, #6366f1 0%, #a855f7 60%, #ec4899 100%)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      boxShadow: `0 2px ${size > 40 ? "16px" : "8px"} rgba(99,102,241,0.35)`,
+    }}>
+      <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none">
+        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" opacity="0.95"/>
+      </svg>
+    </div>
+  );
+}
+
 // ── Thinking timer ───────────────────────────────────────────────
 function ThinkingIndicator() {
   const [elapsed, setElapsed] = useState(0);
@@ -104,12 +120,7 @@ function ThinkingIndicator() {
   }, []);
   return (
     <div className="fade-in" style={{ display: "flex", gap: 14, marginBottom: 28, width: "100%" }}>
-      <div style={{
-        width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-        background: "linear-gradient(135deg, #b5704a, #c97d50)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        color: "#fff", fontSize: 14, fontWeight: 700,
-      }}>⬡</div>
+      <LuminaAvatar size={32} />
       <div style={{ paddingTop: 6 }}>
         <div className="typing-dots"><span /><span /><span /></div>
         {elapsed >= 3 && (
@@ -152,7 +163,7 @@ export default function NotebookWorkspace({
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [activeCitation, setActiveCitation] = useState<Citation | null>(null);
-  const [activeTab, setActiveTab] = useState<"chat" | "graph" | "quiz" | "knowledge">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "quiz" | "knowledge">("chat");
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [chatMode, setChatMode] = useState<"auto" | "teach">("auto");
   const [modelPreference, setModelPreference] = useState<"auto" | "gemini" | "local">("auto");
@@ -250,6 +261,7 @@ export default function NotebookWorkspace({
       };
       setDocuments((p) => [tempDoc, ...p]);
       pollDocument(res.doc_id);
+      if (onTitleChange) onTitleChange();
     } catch (err) { alert("Upload failed: " + err); }
     finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
   }
@@ -370,7 +382,6 @@ export default function NotebookWorkspace({
     { id: "chat", label: "Chat", icon: <MessageSquare size={13} /> },
     { id: "quiz", label: "Quiz", icon: <Brain size={13} /> },
     { id: "knowledge", label: "Knowledge", icon: <Database size={13} /> },
-    { id: "graph", label: "Graph", icon: <Network size={13} /> },
   ] as const;
 
   return (
@@ -446,9 +457,7 @@ export default function NotebookWorkspace({
 
         {/* Center: Chat or Tabs */}
         <div style={{ flex: 1, position: "relative", overflow: "hidden", minWidth: 0 }}>
-          {activeTab === "graph" ? (
-            <GraphExplorer notebookId={notebook.notebook_id} />
-          ) : activeTab === "quiz" ? (
+          {activeTab === "quiz" ? (
             <QuizMode notebookId={notebook.notebook_id} />
           ) : activeTab === "knowledge" ? (
             <KnowledgeExplorer notebookId={notebook.notebook_id} />
@@ -469,13 +478,7 @@ export default function NotebookWorkspace({
                       alignItems: "center", justifyContent: "center",
                       gap: 12, minHeight: "55vh", paddingTop: "4vh"
                     }}>
-                      <div style={{
-                        width: 52, height: 52, borderRadius: 14,
-                        background: "linear-gradient(135deg, #b5704a, #c97d50)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 24, marginBottom: 8,
-                        boxShadow: "0 8px 24px rgba(181,112,74,0.25)"
-                      }}>⬡</div>
+                      <LuminaAvatar size={52} />
                       <h2 style={{ fontSize: "1.4rem", fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>
                         {hasDocs ? "What would you like to learn?" : "Get started"}
                       </h2>
@@ -601,13 +604,7 @@ export default function NotebookWorkspace({
                       ) : (
                         /* AI response */
                         <div style={{ width: "100%", display: "flex", gap: 14 }}>
-                          <div style={{
-                            width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                            background: "linear-gradient(135deg, #b5704a, #c97d50)",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            color: "#fff", fontSize: 14, fontWeight: 700, marginTop: 2,
-                            boxShadow: "0 2px 8px rgba(181,112,74,0.25)"
-                          }}>⬡</div>
+                          <LuminaAvatar size={32} />
 
                           <div style={{ flex: 1, minWidth: 0 }}>
                             {msg.mode_used === "teach" ? (
