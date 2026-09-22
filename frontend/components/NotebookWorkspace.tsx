@@ -10,6 +10,7 @@ import {
   Copy, Check, Volume2, VolumeX, Network, MessageSquare,
   Paperclip, ArrowUp, BookOpen, Brain, GraduationCap, Database,
   RotateCcw, Pencil, X, Trash2, FileText, FileSpreadsheet, Presentation, File,
+  FileDown, ChevronDown, Loader2,
 } from "lucide-react";
 
 interface Message {
@@ -68,6 +69,59 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button className="btn-icon" onClick={copy} title={copied ? "Copied!" : "Copy response"}>
       {copied ? <Check size={14} strokeWidth={2.5} color="var(--success)" /> : <Copy size={14} />}
+    </button>
+  );
+}
+
+// ── Export Word (.docx) Button ────────────────────────────────────
+function ExportDocxButton({
+  notebookId,
+  title,
+  content,
+  citations,
+}: {
+  notebookId: string;
+  title: string;
+  content: string;
+  citations?: Citation[];
+}) {
+  const [downloading, setDownloading] = useState(false);
+
+  const handleExport = async () => {
+    setDownloading(true);
+    try {
+      await api.exportDocx(notebookId, {
+        export_type: "answer",
+        title: title || "Research Note",
+        content,
+        citations,
+      });
+    } catch (e) {
+      console.error("Failed to export Word document:", e);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <button
+      className="tts-btn"
+      onClick={handleExport}
+      disabled={downloading}
+      title="Download as styled Microsoft Word (.docx)"
+      style={{ display: "inline-flex", alignItems: "center", gap: 4, marginLeft: 2 }}
+    >
+      {downloading ? (
+        <>
+          <span className="spinner spinner-sm" style={{ width: 11, height: 11 }} />
+          Exporting…
+        </>
+      ) : (
+        <>
+          <FileDown size={13} color="#4f46e5" />
+          Word (.docx)
+        </>
+      )}
     </button>
   );
 }
@@ -170,6 +224,10 @@ export default function NotebookWorkspace({
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportStatusText, setExportStatusText] = useState<string | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -177,6 +235,62 @@ export default function NotebookWorkspace({
   const editRef = useRef<HTMLTextAreaElement>(null);
   const pollingRef = useRef<Record<string, NodeJS.Timeout>>({});
   const { speakingId, speak } = useTTS();
+
+  // Close export menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleExportStudyGuide = async () => {
+    setExporting(true);
+    setExportMenuOpen(false);
+    setExportStatusText("Synthesizing comprehensive Study Guide across all document topics...");
+    try {
+      await api.exportAutoStudyGuide(notebook.notebook_id, notebook.name);
+      setExportStatusText("Study Guide (.docx) downloaded successfully!");
+      setTimeout(() => setExportStatusText(null), 4000);
+    } catch (err) {
+      console.error("Export study guide error:", err);
+      // Direct stream fallback via browser window
+      try {
+        const directUrl = api.getStudyGuideDownloadUrl(notebook.notebook_id);
+        window.open(directUrl, "_blank");
+        setExportStatusText("Download triggered via direct browser stream!");
+        setTimeout(() => setExportStatusText(null), 4000);
+      } catch (e2) {
+        setExportStatusText("Failed to download study guide. Please try again.");
+        setTimeout(() => setExportStatusText(null), 5000);
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportChat = async () => {
+    setExporting(true);
+    setExportMenuOpen(false);
+    setExportStatusText("Generating Chat Transcript (.docx)...");
+    try {
+      await api.exportDocx(notebook.notebook_id, {
+        export_type: "chat",
+        title: notebook.name,
+      });
+      setExportStatusText("Chat Transcript (.docx) downloaded successfully!");
+      setTimeout(() => setExportStatusText(null), 4000);
+    } catch (err) {
+      console.error("Export chat transcript error:", err);
+      setExportStatusText("Failed to export chat transcript. Please try again.");
+      setTimeout(() => setExportStatusText(null), 5000);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Load data
   useEffect(() => {
@@ -450,6 +564,86 @@ export default function NotebookWorkspace({
           <BookOpen size={13} />
           Sources {documents.length > 0 && <span style={{ fontSize: 11, opacity: 0.8 }}>({documents.length})</span>}
         </button>
+
+        {/* Export Dropdown */}
+        <div style={{ position: "relative" }} ref={exportMenuRef}>
+          <button
+            onClick={() => !exporting && setExportMenuOpen(!exportMenuOpen)}
+            disabled={exporting}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "6px 14px", borderRadius: 8, border: "1px solid var(--border)",
+              background: exporting ? "rgba(99,102,241,0.08)" : "var(--bg-panel)",
+              color: exporting ? "#4f46e5" : "var(--text-secondary)",
+              cursor: exporting ? "wait" : "pointer", fontSize: 13, fontWeight: 600,
+              transition: "all 0.18s"
+            }}
+            title="Export research documents to Microsoft Word (.docx)"
+          >
+            {exporting ? (
+              <>
+                <Loader2 size={13} className="animate-spin" color="#4f46e5" />
+                <span>Exporting...</span>
+              </>
+            ) : (
+              <>
+                <FileDown size={13} color="#4f46e5" />
+                <span>Export (.docx)</span>
+                <ChevronDown size={12} style={{ opacity: 0.7 }} />
+              </>
+            )}
+          </button>
+
+          {exportMenuOpen && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 6px)", right: 0,
+              background: "var(--bg-panel)", border: "1px solid var(--border)",
+              borderRadius: 10, padding: 6, minWidth: 230,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.12)", zIndex: 100,
+              display: "flex", flexDirection: "column", gap: 2,
+            }}>
+              <button
+                onClick={handleExportStudyGuide}
+                disabled={exporting}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "8px 12px", borderRadius: 6, border: "none",
+                  background: "transparent", color: "var(--text-primary)",
+                  cursor: "pointer", fontSize: 13, textAlign: "left",
+                  transition: "background 0.15s",
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = "var(--bg-user-msg)"}
+                onMouseOut={(e) => e.currentTarget.style.background = "transparent"}
+              >
+                <FileText size={15} color="#4f46e5" />
+                <div>
+                  <div style={{ fontWeight: 600 }}>Study Guide (.docx)</div>
+                  <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Full synthesis with bibliography</div>
+                </div>
+              </button>
+
+              <button
+                onClick={handleExportChat}
+                disabled={exporting || messages.length === 0}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "8px 12px", borderRadius: 6, border: "none",
+                  background: "transparent", color: messages.length === 0 ? "var(--text-dim)" : "var(--text-primary)",
+                  cursor: messages.length === 0 ? "not-allowed" : "pointer", fontSize: 13, textAlign: "left",
+                  transition: "background 0.15s",
+                }}
+                onMouseOver={(e) => { if (messages.length > 0) e.currentTarget.style.background = "var(--bg-user-msg)"; }}
+                onMouseOut={(e) => e.currentTarget.style.background = "transparent"}
+              >
+                <MessageSquare size={15} color="#4338ca" />
+                <div>
+                  <div style={{ fontWeight: 600 }}>Chat Transcript (.docx)</div>
+                  <div style={{ fontSize: 11, color: "var(--text-dim)" }}>All questions & cited answers</div>
+                </div>
+              </button>
+            </div>
+          )}
+        </div>
       </header>
 
       {/* ── Body ───────────────────────────────────────────────── */}
@@ -704,6 +898,17 @@ export default function NotebookWorkspace({
                                   <RotateCcw size={13} /> Regenerate
                                 </button>
                               )}
+                              {/* Export as Word (.docx) */}
+                              <ExportDocxButton
+                                notebookId={notebook.notebook_id}
+                                title={
+                                  messages[idx - 1]?.role === "user"
+                                    ? messages[idx - 1].content
+                                    : `${notebook.name} — Note`
+                                }
+                                content={msg.content}
+                                citations={msg.citations}
+                              />
                             </div>
                           </div>
                         </div>
@@ -952,6 +1157,27 @@ export default function NotebookWorkspace({
           </div>
         )}
       </div>
+
+      {/* Floating Export Status Toast */}
+      {exportStatusText && (
+        <div style={{
+          position: "fixed", bottom: 28, right: 28, zIndex: 9999,
+          background: "var(--bg-panel)",
+          border: exporting ? "1px solid #6366f1" : "1px solid #10b981",
+          borderRadius: 12, padding: "12px 20px",
+          boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
+          display: "flex", alignItems: "center", gap: 12,
+          color: "var(--text-primary)", fontSize: 13.5, fontWeight: 500,
+          animation: "fadeIn 0.2s ease-out",
+        }}>
+          {exporting ? (
+            <Loader2 size={18} className="animate-spin" color="#6366f1" />
+          ) : (
+            <Check size={18} color="#10b981" />
+          )}
+          <span>{exportStatusText}</span>
+        </div>
+      )}
     </div>
   );
 }

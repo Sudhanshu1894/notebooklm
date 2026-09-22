@@ -24,7 +24,8 @@ export default function MasteryDashboard({ notebookId }: { notebookId: string })
   const [error, setError] = useState("");
 
   useEffect(() => {
-    api.getQuizMastery(notebookId)
+    fetch(`http://localhost:8000/notebooks/${notebookId}/quiz/mastery`)
+      .then(r => r.json())
       .then(d => { setStats(d.stats || []); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
   }, [notebookId]);

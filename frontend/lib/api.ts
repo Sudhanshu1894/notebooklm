@@ -240,9 +240,74 @@ export const api = {
     return res.json();
   },
 
-  async getQuizMastery(notebookId: string): Promise<{ stats: any[] }> {
-    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/quiz/mastery`);
+  getStudyGuideDownloadUrl(notebookId: string): string {
+    return `${API_BASE}/notebooks/${notebookId}/export/study-guide`;
+  },
+
+  async exportDocx(
+    notebookId: string,
+    options: {
+      export_type?: "answer" | "study_guide" | "chat";
+      title?: string;
+      content?: string;
+      citations?: Citation[];
+      takeaways?: string[];
+    }
+  ): Promise<void> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/export/docx`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
+    });
     if (!res.ok) throw new Error(await res.text());
-    return res.json();
+
+    let filename = `${options.title || "Research_Export"}.docx`;
+    const disposition = res.headers.get("Content-Disposition") || res.headers.get("content-disposition");
+    if (disposition && disposition.includes("filename=")) {
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) filename = match[1].replace(/['"]/g, "").trim();
+    }
+
+    const blob = await res.blob();
+    this.triggerDownload(blob, filename);
+  },
+
+  async exportAutoStudyGuide(notebookId: string, fallbackName = "Study_Guide"): Promise<void> {
+    const res = await fetch(`${API_BASE}/notebooks/${notebookId}/export/study-guide`, {
+      method: "POST",
+    });
+    if (!res.ok) throw new Error(await res.text());
+
+    let filename = `${fallbackName}_Study_Guide.docx`;
+    const disposition = res.headers.get("Content-Disposition") || res.headers.get("content-disposition");
+    if (disposition && disposition.includes("filename=")) {
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) filename = match[1].replace(/['"]/g, "").trim();
+    }
+
+    const blob = await res.blob();
+    this.triggerDownload(blob, filename);
+  },
+
+  triggerDownload(blob: Blob, filename: string): void {
+    const cleanName = filename.replace(/[^\w\.\-\s]/g, "_").trim() || "Research_Export.docx";
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.style.display = "none";
+    a.href = url;
+    a.setAttribute("download", cleanName);
+    document.body.appendChild(a);
+    a.click();
+
+    // Critical for Windows/Chrome: Do NOT revoke URL immediately or download will be cancelled!
+    setTimeout(() => {
+      try {
+        if (a.parentNode) document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
+    }, 60000);
   },
 };
+

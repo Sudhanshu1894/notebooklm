@@ -140,3 +140,30 @@ class VectorStore:
             return True
         except Exception:
             return False
+
+    def get_all_chunks(self, notebook_id: str) -> List[Dict[str, Any]]:
+        """
+        Retrieves all chunks stored in the notebook collection.
+        Returns list of dicts with chunk_id, text, and metadata.
+        """
+        collection = self.get_or_create_collection(notebook_id)
+        try:
+            results = collection.get(include=["documents", "metadatas"])
+            matches = []
+            if results and results.get("ids"):
+                ids = results["ids"]
+                docs = results.get("documents") or []
+                metas = results.get("metadatas") or []
+                for i in range(len(ids)):
+                    matches.append(
+                        {
+                            "chunk_id": ids[i],
+                            "text": docs[i] if i < len(docs) else "",
+                            "metadata": metas[i] if i < len(metas) else {},
+                        }
+                    )
+            return matches
+        except Exception as e:
+            print(f"[vector_store] Error fetching all chunks for notebook {notebook_id}: {e}")
+            return []
+

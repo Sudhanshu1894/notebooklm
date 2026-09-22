@@ -6,8 +6,10 @@ Exposes the full pipeline: document upload, processing, chat with citations, gra
 import os
 import uuid
 import sys
+import re
 from typing import Dict, Any, List, Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Header
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import shutil
@@ -43,6 +45,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 doc_registry = DocumentRegistry()
@@ -135,6 +138,13 @@ class GradeResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
+
+class DocxExportRequest(BaseModel):
+    export_type: Optional[str] = "answer"  # "answer" | "study_guide" | "chat"
+    title: Optional[str] = "Research Synthesis"
+    content: Optional[str] = ""
+    citations: Optional[List[Dict[str, Any]]] = None
+    takeaways: Optional[List[str]] = None
 
 
 # ─── Utility ──────────────────────────────────────────────────────────────────
@@ -687,6 +697,127 @@ def get_sample_stats():
         raise HTTPException(status_code=404, detail="Run 'python -m data_loading.loader' first.")
     data = load_local_sample(sample_path)
     return data.get("metadata", {})
+
+
+@app.post("/notebooks/{notebook_id}/export/docx")
+def export_docx(notebook_id: str, body: DocxExportRequest):
+    """
+    Exports a styled Microsoft Word (.docx) document:
+    - export_type = "answer": exports a single question/answer with key takeaways and citations
+    - export_type = "chat": exports full Q&A discussion transcript with citations
+    - export_type = "study_guide": exports a multi-topic study guide
+    """
+    from generation.docx_exporter import (
+        build_answer_docx,
+        build_study_guide_docx,
+        build_chat_transcript_docx,
+    )
+    nb = doc_registry.get_notebook(notebook_id)
+    nb_name = nb.get("name", f"Notebook {notebook_id}") if nb else f"Notebook {notebook_id}"
+
+    export_type = (body.export_type or "answer").lower()
+    citations = body.citations or []
+
+    if export_type == "chat":
+        messages = doc_registry.list_messages(notebook_id)
+        for m in messages:
+            if isinstance(m.get("citations"), str):
+                try:
+                    import json
+                    m["citations"] = json.loads(m["citations"])
+                except Exception:
+                    m["citations"] = []
+        buf = build_chat_transcript_docx(nb_name, messages)
+        filename = f"{nb_name}_Transcript.docx"
+    elif export_type == "study_guide":
+        if not body.content:
+            from generation.study_guide import generate_comprehensive_study_guide
+            sg_res = generate_comprehensive_study_guide(notebook_id, nb_name)
+            buf = build_study_guide_docx(
+                notebook_name=nb_name,
+                citations=sg_res["citations"],
+                overall_takeaways=sg_res["takeaways"],
+                markdown_content=sg_res["markdown_content"],
+            )
+        else:
+            overview = body.content
+            topics = []
+            if "## " in body.content:
+                parts = body.content.split("## ")
+                overview = parts[0].strip() or overview
+                for p in parts[1:]:
+                    lines = p.strip().split("\n", 1)
+                    t_title = lines[0].strip()
+                    t_content = lines[1].strip() if len(lines) > 1 else ""
+                    topics.append({"title": t_title, "content": t_content})
+
+            buf = build_study_guide_docx(
+                notebook_name=nb_name,
+                overview_text=overview,
+                topics=topics,
+                citations=citations,
+                overall_takeaways=body.takeaways,
+                markdown_content=body.content if not topics else None,
+            )
+        filename = f"{nb_name}_Study_Guide.docx"
+    else:
+        # Default: single answer or memo
+        buf = build_answer_docx(
+            query=body.title or "Research Synthesis",
+            answer=body.content or "No content provided.",
+            citations=citations,
+            notebook_name=nb_name,
+            takeaways=body.takeaways,
+        )
+        safe_title = re.sub(r'[^a-zA-Z0-9_\- ]', '', (body.title or "Research_Memo"))[:40].strip()
+        filename = f"{safe_title}.docx"
+
+    safe_filename = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', filename)
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+    )
+
+
+@app.get("/notebooks/{notebook_id}/export/study-guide")
+@app.post("/notebooks/{notebook_id}/export/study-guide")
+def export_auto_study_guide(notebook_id: str):
+    """
+    Section-Based Map-Reduce Study Guide Generation:
+    100% topic coverage across all document chapters, batch-packed for rate limit protection,
+    and exported as a styled Microsoft Word (.docx) document.
+    """
+    from generation.study_guide import generate_comprehensive_study_guide
+    from generation.docx_exporter import build_study_guide_docx
+
+    nb = doc_registry.get_notebook(notebook_id)
+    nb_name = nb.get("name", f"Notebook {notebook_id}") if nb else f"Notebook {notebook_id}"
+
+    result = generate_comprehensive_study_guide(notebook_id, nb_name)
+
+    buf = build_study_guide_docx(
+        notebook_name=nb_name,
+        citations=result["citations"],
+        overall_takeaways=result["takeaways"],
+        markdown_content=result["markdown_content"],
+    )
+
+    safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', nb_name)
+    filename = f"{safe_name}_Study_Guide.docx"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+    )
 
 
 if __name__ == "__main__":
